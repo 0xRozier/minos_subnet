@@ -66,7 +66,7 @@ from utils import scoring_version as scoring_version_util
 from base import GENOMICS_CONFIG, MINER_CONFIG, is_docker_available, require_docker, BASE_DIR
 from utils.file_utils import download_file_verified, download_file_with_fallback
 from utils.platform_client import PaymentRequiredError, MinerPlatformClient, PlatformConfig, PlatformClientError
-from utils.config_loader import extract_tool_options, get_tool_version
+from utils.config_loader import extract_tool_options, get_tool_version, CONFIG_DIR
 
 # Template system for pluggable variant callers
 from templates import (
@@ -582,7 +582,7 @@ class Miner:
             print(f"{'='*60}", flush=True)
 
             # Get tool config BEFORE running template (so we use what we submit)
-            tool_config = self._get_tool_config()
+            tool_config = self._get_tool_config(region=region)
 
             if self.submit_only:
                 print(
@@ -1078,10 +1078,12 @@ class Miner:
             bt.logging.warning(f"Config submission failed: {result}")
             return False
 
-    def _get_tool_config(self) -> Dict[str, Any]:
+    def _get_tool_config(self, region: Optional[str] = None) -> Dict[str, Any]:
         """Get the tool configuration for the current variant caller.
 
         Loads parameters from configs/{tool}.conf files.
+        If a chromosome-specific config exists (e.g. configs/gatk_chr22.conf)
+        and ``region`` is provided, that file is used instead.
         Only includes QUALITY-AFFECTING parameters that are whitelisted in templates/tool_params.py.
         System parameters (threads, memory, timeout) are host-specific, so they are handled
         separately and not submitted: a validator re-running the config applies its own
@@ -1092,10 +1094,19 @@ class Miner:
             "version": get_tool_version(self.variant_caller),
         }
 
+        # Check for chromosome-specific config file
+        config_file = None
+        if region:
+            chrom = region.split(":")[0]
+            chrom_config = CONFIG_DIR / f"{self.variant_caller}_{chrom}.conf"
+            if chrom_config.exists():
+                config_file = chrom_config
+                bt.logging.info(f"Using chromosome-specific config: {chrom_config.name}")
+
         # Load tool-specific parameters from config files
         # Miners can customize configs by editing configs/{tool}.conf
         try:
-            tool_options = extract_tool_options(self.variant_caller)
+            tool_options = extract_tool_options(self.variant_caller, config_file=config_file)
 
             # Wrap options in tool-specific key for compatibility with templates
             if self.variant_caller == "gatk":
@@ -1105,7 +1116,8 @@ class Miner:
             elif self.variant_caller == "bcftools":
                 base_config["bcftools_options"] = tool_options
 
-            bt.logging.info(f"Loaded {len(tool_options)} parameters from {self.variant_caller}.conf")
+            config_name = config_file.name if config_file else f"{self.variant_caller}.conf"
+            bt.logging.info(f"Loaded {len(tool_options)} parameters from {config_name}")
 
         except (FileNotFoundError, ValueError) as e:
             bt.logging.warning(f"Could not load config file for {self.variant_caller}: {e}")
@@ -1162,6 +1174,9 @@ class Miner:
             print(f"   Netuid: {self.config.netuid}", flush=True)
         print(f"   Variant Caller: {self.variant_caller}", flush=True)
         print(f"   Config: configs/{self.variant_caller}.conf", flush=True)
+        chrom_configs = sorted(CONFIG_DIR.glob(f"{self.variant_caller}_chr*.conf"))
+        if chrom_configs:
+            print(f"   Per-chromosome configs: {', '.join(c.name for c in chrom_configs)}", flush=True)
         print(f"   Docker: {'Available' if is_docker_available() else 'Not Available'}", flush=True)
         print(f"   Platform: {os.getenv('PLATFORM_URL')}", flush=True)
         print(f"{'='*60}", flush=True)

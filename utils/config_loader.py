@@ -75,7 +75,7 @@ def _quality_param_names(tool: str) -> Optional[Set[str]]:
     return set(params) if params is not None else None
 
 
-def extract_tool_options(tool: str) -> Dict[str, Any]:
+def extract_tool_options(tool: str, config_file: Optional[Path] = None) -> Dict[str, Any]:
     """
     Load tool-specific quality parameters from .conf file.
 
@@ -83,6 +83,8 @@ def extract_tool_options(tool: str) -> Dict[str, Any]:
         tool: Tool name (gatk, deepvariant, bcftools).
               freebayes still resolves through TOOL_VERSIONS so historical
               rounds can be parsed; new submissions are blocked at the platform.
+        config_file: Optional path to a specific .conf file. If None, uses
+                     the default ``configs/{tool}.conf``.
 
     Every key in the file is returned, including ones templates.tool_params
     does not whitelist; unknown keys are warned about here but never dropped,
@@ -96,7 +98,8 @@ def extract_tool_options(tool: str) -> Dict[str, Any]:
         FileNotFoundError: If config file doesn't exist
         ValueError: If config file has invalid lines
     """
-    config_file = CONFIG_DIR / f"{tool}.conf"
+    if config_file is None:
+        config_file = CONFIG_DIR / f"{tool}.conf"
 
     if not config_file.exists():
         raise FileNotFoundError(f"Config file not found: {config_file}")
