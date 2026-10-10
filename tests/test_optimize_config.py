@@ -184,3 +184,35 @@ class TestObjectiveAndCache:
         again = oc.EvalCache(path)
         assert again.get("h", "s")["score"] == 81.5
         assert again.get("h2", "s") is None
+
+
+class TestManifest:
+    def _files(self, tmp_path):
+        for name in ("a.bam", "a.bam.bai", "t.vcf.gz", "m.vcf.gz", "ref.fa"):
+            (tmp_path / name).write_text("x")
+        (tmp_path / "ref.sdf").mkdir()
+
+    def test_relative_paths_splits_and_defaults(self, tmp_path):
+        import json
+        self._files(tmp_path)
+        entry = {"region": "chr13:22051001-27704000", "bam": "a.bam", "truth": "t.vcf.gz",
+                 "mutations": "m.vcf.gz", "reference": "ref.fa", "sdf": "ref.sdf"}
+        manifest = tmp_path / "rounds.json"
+        manifest.write_text(json.dumps([dict(entry), dict(entry, sample_id="r2", network_top=85.07),
+                                        dict(entry, sample_id="r3")]))
+        samples = oc.load_manifest(manifest, holdout=1)
+        assert [s["split"] for s in samples] == ["tune", "tune", "holdout"]
+        assert samples[0]["sample_id"] == "chr13:22051001-27704000"
+        assert samples[0]["chromosome"] == "chr13"
+        assert samples[0]["bam"] == str(tmp_path / "a.bam")
+        assert samples[1]["network_top"] == 85.07
+
+    def test_missing_file_is_refused(self, tmp_path):
+        import json
+        self._files(tmp_path)
+        manifest = tmp_path / "rounds.json"
+        manifest.write_text(json.dumps([{"region": "chr12:1-100", "bam": "nope.bam",
+                                         "truth": "t.vcf.gz", "mutations": "m.vcf.gz",
+                                         "reference": "ref.fa", "sdf": "ref.sdf"}]))
+        with pytest.raises(SystemExit):
+            oc.load_manifest(manifest, holdout=0)

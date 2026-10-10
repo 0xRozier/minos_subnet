@@ -68,6 +68,8 @@ SDF_FILES = ("done", "mainIndex", "nameIndex0", "namedata0", "namepointer0",
 # change the output format rather than accuracy, or are simply wrong for
 # Minos BAMs (Illumina WGS, diploid).
 FIXED_PARAMS = {
+    # emit_ref_confidence=GVCF was measured: ~900k records, hap.py fails and
+    # the round scores nothing. BP_RESOLUTION writes even more.
     "gatk": {"emit_ref_confidence": "NONE", "sample_ploidy": 2},
     "deepvariant": {"model_type": "WGS"},
     "bcftools": {"ploidy": "GRCh38", "variants_only": True,
@@ -96,6 +98,7 @@ CURATED_PARAMS = {
         "phred_scaled_global_read_mismapping_rate",
         "pair_hmm_gap_continuation_penalty",
         "max_reads_per_alignment_start",
+        "contamination_fraction_to_filter",
     ],
     "deepvariant": [
         "vsc_min_fraction_indels",
@@ -457,6 +460,53 @@ def pick_samples(listing: List[Dict[str, Any]], n: int, chroms: Optional[List[st
     return picked
 
 
+def load_manifest(path: Path, holdout: int) -> List[Dict[str, Any]]:
+    """Samples you already have on disk, e.g. real network rounds.
+
+    ``path`` is a JSON list; each entry needs ``region``, ``bam``, ``truth``
+    and ``mutations`` (paths relative to the manifest are fine). Optional:
+    ``sample_id`` (default: the region), ``split`` ("tune"/"holdout"; by
+    default the last ``holdout`` entries are held out), ``difficulty``,
+    ``reference`` and ``sdf`` (default: fetched into datasets/reference), and
+    ``network_top`` — the score (0-100) the network's best miner got on that
+    round, which the report then compares against.
+    """
+    from neurons import safe_chrom
+
+    entries = json.loads(path.read_text())
+    if not isinstance(entries, list) or not entries:
+        raise SystemExit(f"{path}: expected a non-empty JSON list of samples")
+    base = path.parent
+    samples = []
+    for i, e in enumerate(entries):
+        missing = [k for k in ("region", "bam", "truth", "mutations") if not e.get(k)]
+        if missing:
+            raise SystemExit(f"{path}: entry {i} is missing {', '.join(missing)}")
+        chrom = safe_chrom(e["region"])
+        if chrom is None:
+            raise SystemExit(f"{path}: entry {i} has an unsupported region {e['region']!r}")
+        s = dict(e)
+        for k in ("bam", "truth", "mutations", "reference", "sdf"):
+            if s.get(k):
+                p = Path(s[k]).expanduser()
+                s[k] = str(p if p.is_absolute() else (base / p).resolve())
+                if not Path(s[k]).exists():
+                    raise SystemExit(f"{path}: entry {i}: {k} not found: {s[k]}")
+        if not (s.get("reference") and s.get("sdf")):
+            s["reference"], s["sdf"] = (str(p) for p in ensure_reference(chrom))
+        s.setdefault("sample_id", e["region"])
+        s.setdefault("chromosome", chrom)
+        s.setdefault("split", "holdout" if i >= len(entries) - holdout else "tune")
+        samples.append(s)
+    if not any(s["split"] == "tune" for s in samples):
+        raise SystemExit(f"{path}: no tuning samples left; lower --holdout")
+    miner = _import_miner()
+    for s in samples:
+        if not miner._ensure_bam_index(Path(s["bam"])):
+            raise SystemExit(f"Could not index {s['bam']}")
+    return samples
+
+
 def prepare_samples(args, run_dir: Path) -> List[Dict[str, Any]]:
     """Choose (once, then reuse) and download the practice samples.
 
@@ -464,6 +514,9 @@ def prepare_samples(args, run_dir: Path) -> List[Dict[str, Any]]:
     samples in the same order; otherwise the study's numbers would not be
     comparable from one session to the next.
     """
+    if args.manifest:
+        return load_manifest(Path(args.manifest), args.holdout)
+
     samples_file = run_dir / "samples.json"
     if samples_file.exists():
         chosen = json.loads(samples_file.read_text())
@@ -881,7 +934,7 @@ def _finalize(args, run_dir, ranges, samples, ev, study=None) -> int:
 def _print_breakdown(best, samples) -> None:
     print("\nBest config, per sample:")
     print(f"   {'region':<28}{'diff':<8}{'split':<9}{'score':>7}{'core':>7}{'germ':>7}"
-          f"{'fp/tgt':>8}  indel_1bp  snp_het  indel_2_3")
+          f"{'fp/tgt':>8}  indel_1bp  snp_het  indel_2_3  vs net top")
     for s in samples:
         r = best["recs"].get(s["sample_id"])
         if r is None:
@@ -892,6 +945,7 @@ def _print_breakdown(best, samples) -> None:
               f"{r['score']:>7.2f}{r.get('core', 0):>7.3f}{r.get('germline', 0):>7.3f}"
               f"{r.get('fp_per_target', 0):>8.2f}  {fmt(cf.get('indel_1bp')):>9}  "
               f"{fmt(cf.get('snp_het')):>7}  {fmt(cf.get('indel_2_3bp')):>9}"
+              + (f"  {r['score'] - float(s['network_top']):+9.2f}" if s.get("network_top") is not None else "")
               + (f"   ERROR {r['error'][:60]}" if r.get("error") else ""))
 
 
@@ -938,7 +992,7 @@ def _write_per_chrom(args, table, samples) -> None:
 def cmd_report(args) -> int:
     run_dir, ranges = _setup(args)
     samples_file = run_dir / "samples.json"
-    if not samples_file.exists():
+    if not args.manifest and not samples_file.exists():
         raise SystemExit(f"No run found in {run_dir}")
     samples = prepare_samples(args, run_dir)
     ev = Evaluator(args.tool, run_dir, samples, args)
@@ -969,6 +1023,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--holdout", type=int, default=3,
                         help="Held-out samples for the final check (default 3)")
         sp.add_argument("--chroms", help="Restrict samples, e.g. chr18,chr19")
+        sp.add_argument("--manifest", help="JSON list of local samples (e.g. real network "
+                                           "rounds) to use instead of practice samples")
         sp.add_argument("--seed", type=int, default=107)
         sp.add_argument("--threads", type=int, default=os.cpu_count() or 4)
         sp.add_argument("--timeout", type=int, default=1800,

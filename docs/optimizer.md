@@ -54,6 +54,7 @@ Useful options:
 | `--n-samples` | 8 | Tuning samples (more = slower but less overfitting) |
 | `--holdout` | 3 | Samples kept aside for the final check |
 | `--chroms` | all | Restrict to e.g. `chr18,chr19` |
+| `--manifest` | — | JSON list of local samples (e.g. real rounds) instead of practice ones |
 | `--params` | `curated` | `all`, or a comma-separated list of parameters to search |
 | `--risk` | 0 | Objective `mean - risk × stdev`; `0.5` favours consistent configs |
 | `--threads` | all cores | Threads per variant-caller run |
@@ -63,6 +64,41 @@ Useful options:
 Everything lives in `optimize_runs/<tool>/`: the chosen samples
 (`samples.json`), every (config, sample) result (`evals.jsonl`) and the Optuna
 study (`study.db`). Delete the directory to start over with new samples.
+
+## Using your own rounds (`--manifest`)
+
+Practice samples only cover chr18–chr22. If you have real network rounds on
+disk (BAM + truth + mutations), describe them in a JSON list and pass it with
+`--manifest`; the search then tunes on exactly the chromosomes live rounds use.
+
+```json
+[
+  {"region": "chr13:22051001-27704000",
+   "bam": "rounds/2026-10-09T10/input.bam",
+   "truth": "rounds/2026-10-09T10/truth.vcf.gz",
+   "mutations": "rounds/2026-10-09T10/mutations.vcf.gz",
+   "network_top": 85.07},
+  {"region": "chr12:82292001-87615000", "bam": "...", "truth": "...", "mutations": "...",
+   "split": "holdout"}
+]
+```
+
+Paths are relative to the manifest. `network_top` (optional, 0–100) is the
+best network score on that round; the per-sample report then shows your gap
+to it. Without `split`, the last `--holdout` entries are held out. Use a
+separate `--run-dir` per manifest.
+
+## Findings worth knowing
+
+* `emit_ref_confidence=GVCF` writes ~900k records; hap.py fails and the round
+  scores nothing. The optimizer keeps it at `NONE`.
+* GATK refuses `base_quality_score_threshold` below 6 and crashes, although
+  the platform accepts 0–50. Above ~35 it can drop every variant on
+  chromosomes whose base qualities are capped.
+* `dont_use_soft_clipped_bases` is fixed to `false` live: a `true` that helps
+  locally is not what validators run.
+* `contamination_fraction_to_filter=0.05` gained +0.2 on a default GATK run
+  (no effect at 0.01–0.02).
 
 ## Cost
 
@@ -77,9 +113,12 @@ continue with a higher `--trials`.
 
 * Practice samples cover chr18–chr22, while live rounds draw their region from
   `chromosome_rotation` in `/scoring/network-config` (currently mostly chr12
-  and chr13). A config that wins on average over many chr18–22 regions is the
-  best available estimate for those chromosomes; per-chromosome configs for
-  chr12/chr13 cannot be tuned from practice data.
+  and chr13). Tune on real chr12/chr13 rounds with `--manifest` when you have
+  them; otherwise a config that wins on average over many chr18–22 regions is
+  the best available estimate.
+* The search is a heuristic: it finds the best config among those it tries,
+  validated on held-out samples. It cannot prove that no better config
+  exists.
 * Validator hardware differs from yours. The report shows each finalist's
   slowest runtime; a config near the timeout on your box may time out on a
   validator and score nothing.
