@@ -89,3 +89,4 @@ htmlcov/
 .cursor/
 .aider*
 .windsurfrules
+optimize_runs/

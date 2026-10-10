@@ -105,6 +105,7 @@ minos_subnet/
 ├── docs/                     # Architecture and integration docs
 │   ├── architecture.md       # System architecture deep dive
 │   ├── tuning_guide.md       # Miner tuning reference (scoring, parameters, strategy)
+│   ├── optimizer.md          # Multi-sample config search (scripts/optimize_config.py)
 │   ├── parameter_ranges.md   # Accepted parameters and valid ranges per tool
 │   ├── hap_py_docker.md      # hap.py Docker image reference
 │   └── ai-assistant/         # AI assistant knowledge graph, runtime skills, and persona assets
@@ -657,6 +658,7 @@ btcli subnet metagraph --netuid 107
 - [utils/README.md](utils/README.md) - Utility modules reference
 - [docs/architecture.md](docs/architecture.md) - System architecture deep dive
 - [docs/tuning_guide.md](docs/tuning_guide.md) - Miner tuning guide (scoring breakdown, parameters, strategy)
+- [docs/optimizer.md](docs/optimizer.md) - Automated config search across practice samples
 - [docs/parameter_ranges.md](docs/parameter_ranges.md) - Accepted parameters and valid ranges per tool (from `templates/tool_params.py`, the definitions the validator enforces; also published at `GET /scoring/parameter-ranges`)
 - [docs/scoring.md](docs/scoring.md) - How scoring works, the overcall penalty, and scoring v2
 - [docs/miner_features.md](docs/miner_features.md) - Config commitment and paid resubmission (currently off; read before enabling auto-updates)
