@@ -659,6 +659,7 @@ btcli subnet metagraph --netuid 107
 - [docs/architecture.md](docs/architecture.md) - System architecture deep dive
 - [docs/tuning_guide.md](docs/tuning_guide.md) - Miner tuning guide (scoring breakdown, parameters, strategy)
 - [docs/optimizer.md](docs/optimizer.md) - Automated config search across practice samples
+- [docs/plan_top20.md](docs/plan_top20.md) - Observations and plan to reach the top 20 (FR)
 - [docs/parameter_ranges.md](docs/parameter_ranges.md) - Accepted parameters and valid ranges per tool (from `templates/tool_params.py`, the definitions the validator enforces; also published at `GET /scoring/parameter-ranges`)
 - [docs/scoring.md](docs/scoring.md) - How scoring works, the overcall penalty, and scoring v2
 - [docs/miner_features.md](docs/miner_features.md) - Config commitment and paid resubmission (currently off; read before enabling auto-updates)
