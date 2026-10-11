@@ -909,7 +909,11 @@ def cmd_search(args) -> int:
     # A trial left RUNNING was cut off by a crash or a reboot: close it and
     # queue the same parameters again so the resumed search still tries them.
     # Its finished (config, sample) results are in the cache and are reused.
-    for t in study.get_trials(deepcopy=False, states=(optuna.trial.TrialState.RUNNING,)):
+    # Skipped with --enqueue-only, which runs next to a live search whose
+    # current trial is legitimately RUNNING.
+    stale = [] if args.enqueue_only else study.get_trials(
+        deepcopy=False, states=(optuna.trial.TrialState.RUNNING,))
+    for t in stale:
         study.tell(t.number, state=optuna.trial.TrialState.FAIL)
         study.enqueue_trial(t.params)
         print(f"   trial {t.number} was interrupted; queued again", flush=True)
@@ -942,6 +946,29 @@ def cmd_search(args) -> int:
             if trial.should_prune():
                 raise optuna.TrialPruned()
         return objective_value(scores, args.risk)
+
+    # Targeted variations of the starting config, e.g.
+    # --enqueue standard_min_confidence_threshold_for_calling=75 min_pruning=3
+    # Queued trials run before the sampler proposes anything, and count as
+    # its startup trials, so a few well-chosen neighbours replace random ones.
+    for spec in args.enqueue or []:
+        from utils.config_loader import _parse_value
+
+        overrides = {}
+        for part in spec.split(","):
+            key, _, val = part.partition("=")
+            key = key.strip()
+            if key not in names:
+                raise SystemExit(f"--enqueue {spec!r}: {key!r} is not a searched parameter")
+            overrides[key] = _parse_value(val.strip())
+            if not in_range(overrides[key], ranges[key]):
+                raise SystemExit(f"--enqueue {spec!r}: {key}={val} is outside the live range")
+        params = {k: base[k] for k in names if k in base}
+        params.update(overrides)
+        study.enqueue_trial(params, skip_if_exists=True)
+        print(f"   queued {spec}", flush=True)
+    if args.enqueue_only:
+        return 0
 
     remaining = args.trials - len([t for t in study.trials
                                    if t.state in (optuna.trial.TrialState.COMPLETE,
@@ -1178,6 +1205,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--params", default="curated",
                     help="'curated' (default), 'all', or a comma-separated list")
     sp.add_argument("--conf", nargs="*", help="Extra configs to seed the search with")
+    sp.add_argument("--enqueue", nargs="*", metavar="P=V[,P=V]",
+                    help="Variations of the first --conf to try before sampling, "
+                         "one trial per argument")
+    sp.add_argument("--enqueue-only", action="store_true",
+                    help="Queue the --enqueue trials into the study and exit")
     sp.add_argument("--no-prune", dest="prune", action="store_false",
                     help="Score every trial on every tuning sample")
     sp.set_defaults(func=cmd_search)

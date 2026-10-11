@@ -83,6 +83,16 @@ python scripts/optimize_config.py search   --manifest datasets/rounds/manifest.j
 
 The per-sample report then shows `vs top1` and `vs top20` for every round.
 
+To start from a known-good config, pass it first with `--conf`: every
+parameter outside `--params` keeps its value. `--enqueue` queues targeted
+variations of it, run before the sampler proposes anything (they also count
+as its startup trials). Adding them to a search that is already running:
+
+```bash
+python scripts/optimize_config.py search ... --enqueue-only \
+    --enqueue standard_min_confidence_threshold_for_calling=75.0 min_pruning=3
+```
+
 ## Using your own rounds (`--manifest`)
 
 Practice samples only cover chr18–chr22. If you have real network rounds on
