@@ -582,6 +582,20 @@ def prepare_samples(args, run_dir: Path) -> List[Dict[str, Any]]:
 # Evaluation
 # ---------------------------------------------------------------------------
 
+# Errors that say the machine failed, not the config. A run that hits one is
+# not recorded, so it cannot be mistaken for a config that scores zero.
+INFRA_ERRORS = ("rc=125 ", "Docker not running", "Docker not found", "docker pull",
+                "Cannot connect to the Docker daemon", "No space left on device")
+
+
+def _dir_name(sample_id: str) -> str:
+    """A path component for any sample id (round ids contain ':' and '+',
+    which break docker -v mount specs)."""
+    from utils.path_utils import safe_round_dir_name
+
+    return safe_round_dir_name(sample_id)
+
+
 class EvalCache:
     """Append-only JSONL of (config, sample) results. Safe to share across runs."""
 
@@ -687,8 +701,14 @@ class Evaluator:
         print(f"   [{label or h}] {sample['region']} ({sample.get('difficulty') or '-'}) ...",
               end="", flush=True)
         rec = score_sample(self.tool, options, sample,
-                           self.run_dir / "work" / h / sample["sample_id"],
+                           self.run_dir / "work" / h / _dir_name(sample["sample_id"]),
                            self.args.threads, self.args.timeout, self.args.keep_outputs)
+        infra = next((m for m in INFRA_ERRORS if m in (rec.get("error") or "")), None)
+        if infra:
+            # The machine failed, not the config: never cache this as a score.
+            print(f" ABORTED ({rec['error'][:200]})", flush=True)
+            raise SystemExit(f"Infrastructure failure ({infra}); fix it and re-run the same "
+                             f"command — finished results are kept.")
         rec.update({"config_hash": h, "sample_id": sample["sample_id"], "tool": self.tool,
                     "options": options, "region": sample["region"],
                     "chromosome": sample.get("chromosome"), "split": sample.get("split"),

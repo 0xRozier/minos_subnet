@@ -240,3 +240,17 @@ def test_network_scores_takes_top1_and_rank20(monkeypatch):
     top, r20 = oc._network_scores("https://x", "r")
     assert top == pytest.approx(82.4)
     assert r20 == pytest.approx(80.5)
+
+
+def test_infrastructure_failure_is_not_cached(tmp_path, monkeypatch):
+    monkeypatch.setattr(oc, "score_sample", lambda *a, **k: {
+        "score": 0.0, "error": "variant calling failed: Docker not running"})
+
+    class _Args:
+        threads, timeout, keep_outputs = 1, 10, False
+
+    ev = oc.Evaluator("gatk", tmp_path, [], _Args())
+    with pytest.raises(SystemExit):
+        ev.evaluate({"min_pruning": 2}, {"sample_id": "s", "region": "chr12:1-2"})
+    assert ev.cache.data == {}
+    assert not (tmp_path / "evals.jsonl").exists()
