@@ -884,6 +884,13 @@ def cmd_search(args) -> int:
     tune = [s for s in samples if s["split"] == "tune"]
     ev = Evaluator(args.tool, run_dir, samples, args)
     base = base_options(args.tool, ranges)
+    if args.conf:
+        # Parameters that are not searched keep the values of the first
+        # config given, not GATK's defaults: the search starts from it.
+        first = _load_user_conf(args, ranges, args.conf[0])
+        if first is None:
+            raise SystemExit(f"{args.conf[0]} is rejected by the validator; fix it first")
+        base = first
     names = search_params(args.tool, ranges, args.params)
     print(f"\nSearching {len(names)} parameters on {len(tune)} tuning samples "
           f"(+{len(samples) - len(tune)} held out): {', '.join(names)}\n", flush=True)
@@ -907,7 +914,7 @@ def cmd_search(args) -> int:
                 opts = _load_user_conf(args, ranges, c)
                 if opts:
                     seeds.append(opts)
-        for preset in SEED_CONFIGS.get(args.tool, []):
+        for preset in ([] if args.conf else SEED_CONFIGS.get(args.tool, [])):
             seeds.append({**base, **{k: clamp(v, ranges[k]) for k, v in preset.items() if k in ranges}})
         for s in seeds:
             study.enqueue_trial({k: s[k] for k in names if k in s}, skip_if_exists=True)
