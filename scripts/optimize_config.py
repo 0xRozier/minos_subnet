@@ -906,6 +906,14 @@ def cmd_search(args) -> int:
         if args.prune else optuna.pruners.NopPruner(),
     )
 
+    # A trial left RUNNING was cut off by a crash or a reboot: close it and
+    # queue the same parameters again so the resumed search still tries them.
+    # Its finished (config, sample) results are in the cache and are reused.
+    for t in study.get_trials(deepcopy=False, states=(optuna.trial.TrialState.RUNNING,)):
+        study.tell(t.number, state=optuna.trial.TrialState.FAIL)
+        study.enqueue_trial(t.params)
+        print(f"   trial {t.number} was interrupted; queued again", flush=True)
+
     # Seeds: defaults, the operator's current conf(s), and known-good presets.
     if len(study.trials) == 0:
         seeds = [dict(base)]
@@ -935,7 +943,9 @@ def cmd_search(args) -> int:
                 raise optuna.TrialPruned()
         return objective_value(scores, args.risk)
 
-    remaining = args.trials - len([t for t in study.trials if t.state.is_finished()])
+    remaining = args.trials - len([t for t in study.trials
+                                   if t.state in (optuna.trial.TrialState.COMPLETE,
+                                                  optuna.trial.TrialState.PRUNED)])
     if remaining > 0:
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         study.optimize(objective, n_trials=remaining, catch=(Exception,),
