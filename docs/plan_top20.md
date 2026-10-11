@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-11 à 19 h 30 UTC (§3.3, §3.5, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-11 à 22 h 30 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -150,7 +150,8 @@ comptés.
 | seuil 55 | 79,497 | −0,080 |
 | `min_pruning=5` | 79,473 | −0,104 |
 | seuil 42,7 (`soft_base`) | 79,416 | −0,161 |
-| `min_dangling_branch_length=15`, `heterozygosity=0.004` | *en cours* | |
+| `heterozygosity=0.004` | 79,568 | −0,009 |
+| `min_dangling_branch_length=15` | abandonnée après 2 rounds (77,0) | nettement pire |
 
 - **`soft_thr65` est au sommet d'un plateau.** Aucune retouche d'un paramètre
   ne gagne plus de 0,06. Le seuil de confiance est neutre entre 55 et 75.
@@ -160,6 +161,36 @@ comptés.
 - Conclusion provisoire : le chemin vers le top 20 ne passe pas par une petite
   retouche de `soft_thr65`. La suite de la recherche (combinaisons proposées
   par Optuna) et la phase 3 (hypothèse 4.2) prennent le relais.
+
+### 3.6 Phase 2 — propositions d'Optuna (point à 22 h 30 UTC)
+
+25 essais lancés : 13 complets, 11 abandonnés en route (pruning) parce qu'ils
+décrochaient dès les premiers rounds.
+
+**Nouveau meilleur : essai 15, 79,855 (+0,28 vs `soft_thr65`).**
+
+| Paramètre | `soft_thr65` | Essai 15 |
+|---|---|---|
+| `min_pruning` | 4 | **2** |
+| `standard_min_confidence_threshold_for_calling` | 65 | 71,7 |
+| `heterozygosity` | 0,007 | **0,0010** |
+| `min_dangling_branch_length` | 20 | 19 |
+| `min_mapping_quality_score` | 51 | 54 |
+| `min_base_quality_score` | 18 | 26 |
+| `base_quality_score_threshold` | 18 | 24 |
+| `phred_scaled_global_read_mismapping_rate` | 28 | 38 |
+| `pair_hmm_gap_continuation_penalty` | 15 | 22 |
+| `pruning_lod_threshold` | 2,89 | 5,03 |
+
+Round par round : +0,07, +0,01, +0,52, −0,23, +0,73, +0,57. Il gagne sur 5
+rounds sur 6, surtout par le core (jusqu'à +0,006) plus que par les FP.
+Gain encore loin des ~1,8 point qui manquent, et pas encore validé sur les 2
+rounds mis de côté : c'est un candidat, pas encore une nouvelle prod.
+
+Tendance : Optuna remonte vers des configs avec `min_pruning` bas (2–3),
+MQ haut (54–60) et `pruning_lod_threshold` haut (5–9). Le pruning du graphe
+se fait alors par la vraisemblance plutôt que par le nombre de reads, ce qui
+récupère des vrais indels sans laisser passer plus de FP.
 
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
@@ -188,7 +219,7 @@ comptés.
 |---|---|---|---|
 | 0 | Outillage : `optimize_config.py` (bornes live, cache, reprise, held-out), `fetch-rounds` (vrais rounds + score top 1/top 20) | ✅ fait | — |
 | 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | ✅ fait (§3.3) : `soft_thr65` est la base | Choisir la meilleure comme base |
-| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | 🔄 en cours : 9/40 essais, meilleur +0,057 | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
+| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | 🔄 en cours : 25/40 essais, meilleur +0,28 (§3.6) | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de la meilleure config (hypothèse 4.2), et ajustement des FP `indel_8bp` / `snp_het` | à venir | Idem |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
