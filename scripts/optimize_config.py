@@ -723,6 +723,83 @@ def _setup(args) -> Tuple[Path, Dict[str, Dict[str, Any]]]:
     return run_dir, effective_ranges(args.tool, live)
 
 
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _network_scores(platform_url: str, round_id: str) -> Tuple[Optional[float], Optional[float]]:
+    """(top-1, rank-20) combined_final of a finalized round, on the 0-100 scale."""
+    import httpx
+
+    r = httpx.get(f"{platform_url}/scoring/rounds/{round_id}/leaderboard", timeout=60)
+    r.raise_for_status()
+    scores = sorted((e["combined_final"] for e in r.json().get("entries", [])
+                     if isinstance(e.get("combined_final"), (int, float))), reverse=True)
+    if not scores:
+        return None, None
+    top20 = scores[19] if len(scores) >= 20 else scores[-1]
+    return round(100 * scores[0], 4), round(100 * top20, 4)
+
+
+def cmd_fetch_rounds(args) -> int:
+    """Download recent finalized network rounds and write a manifest for them.
+
+    Round files are public once a round closes (/verification/round/{id}),
+    and are checked against the hashes the platform committed to before the
+    round. The leaderboard gives the score to beat on exactly that data.
+    """
+    import httpx
+
+    url = args.platform_url.rstrip("/")
+    chroms = set((args.chroms or "chr12,chr13").split(","))
+    rounds = httpx.get(f"{url}/scoring/rounds", params={"limit": 100}, timeout=60).json()["rounds"]
+    picked = [r for r in rounds if r.get("is_finalized") and r.get("identity_revealed")
+              and r.get("region", "").split(":")[0] in chroms][:args.count]
+    if not picked:
+        raise SystemExit(f"No finalized rounds on {', '.join(sorted(chroms))}")
+
+    out_dir = Path(args.out).resolve()
+    entries = []
+    for r in picked:
+        rid = r["round_id"]
+        ver = httpx.get(f"{url}/verification/round/{rid}", timeout=60).json()
+        files = {f["name"]: f["url"] for f in (ver.get("reveal") or {}).get("files", [])}
+        hashes = ver.get("file_hashes") or {}
+        if not {"input.bam", "truth.vcf.gz", "mutations.vcf.gz"} <= set(files):
+            print(f"   {rid}: round files not revealed, skipped")
+            continue
+        rdir = out_dir / (ver["reveal"].get("prefix", rid).rsplit("/", 1)[-1])
+        rdir.mkdir(parents=True, exist_ok=True)
+        print(f"   {rid}  {r['region']}", flush=True)
+        for name, key in (("input.bam", "bam"), ("truth.vcf.gz", "truth_vcf"),
+                          ("mutations.vcf.gz", "mutations_vcf")):
+            dest = rdir / name
+            if not (dest.exists() and hashes.get(key) and _sha256(dest) == hashes[key]):
+                _fetch(files[name], dest)
+                if hashes.get(key) and _sha256(dest) != hashes[key]:
+                    dest.unlink()
+                    raise SystemExit(f"{rid}: {name} does not match its committed hash")
+            idx = name + (".bai" if name.endswith(".bam") else ".tbi")
+            if idx in files and not (rdir / idx).exists():
+                _fetch(files[idx], rdir / idx)
+        top, r20 = _network_scores(url, rid)
+        entries.append({
+            "sample_id": rid, "region": r["region"], "chromosome": r["region"].split(":")[0],
+            "bam": str(rdir / "input.bam"), "truth": str(rdir / "truth.vcf.gz"),
+            "mutations": str(rdir / "mutations.vcf.gz"),
+            "network_top": top, "network_r20": r20,
+        })
+    manifest = out_dir / "manifest.json"
+    manifest.write_text(json.dumps(entries, indent=1))
+    print(f"\n{len(entries)} rounds -> {manifest}")
+    print(f"Next: python scripts/optimize_config.py baseline --manifest {manifest}")
+    return 0
+
+
 def cmd_check(args) -> int:
     _, ranges = _setup(args)
     status = 0
@@ -934,7 +1011,7 @@ def _finalize(args, run_dir, ranges, samples, ev, study=None) -> int:
 def _print_breakdown(best, samples) -> None:
     print("\nBest config, per sample:")
     print(f"   {'region':<28}{'diff':<8}{'split':<9}{'score':>7}{'core':>7}{'germ':>7}"
-          f"{'fp/tgt':>8}  indel_1bp  snp_het  indel_2_3  vs net top")
+          f"{'fp/tgt':>8}  indel_1bp  snp_het  indel_2_3  vs top1  vs top20")
     for s in samples:
         r = best["recs"].get(s["sample_id"])
         if r is None:
@@ -945,7 +1022,8 @@ def _print_breakdown(best, samples) -> None:
               f"{r['score']:>7.2f}{r.get('core', 0):>7.3f}{r.get('germline', 0):>7.3f}"
               f"{r.get('fp_per_target', 0):>8.2f}  {fmt(cf.get('indel_1bp')):>9}  "
               f"{fmt(cf.get('snp_het')):>7}  {fmt(cf.get('indel_2_3bp')):>9}"
-              + (f"  {r['score'] - float(s['network_top']):+9.2f}" if s.get("network_top") is not None else "")
+              + (f"  {r['score'] - float(s['network_top']):+7.2f}" if s.get("network_top") is not None else "")
+              + (f"  {r['score'] - float(s['network_r20']):+8.2f}" if s.get("network_r20") is not None else "")
               + (f"   ERROR {r['error'][:60]}" if r.get("error") else ""))
 
 
@@ -1039,6 +1117,13 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--per-chrom", action="store_true",
                         help="Also write configs/<tool>_<chrom>.conf where clearly better")
         sp.add_argument("--per-chrom-margin", type=float, default=1.0)
+
+    sp = sub.add_parser("fetch-rounds", help="Download recent real rounds + write a manifest")
+    common(sp, samples=False)
+    sp.add_argument("--chroms", help="Chromosomes to take rounds from (default chr12,chr13)")
+    sp.add_argument("--count", type=int, default=8, help="How many recent rounds (default 8)")
+    sp.add_argument("--out", default=str(REPO_ROOT / "datasets" / "rounds"))
+    sp.set_defaults(func=cmd_fetch_rounds)
 
     sp = sub.add_parser("check", help="Check a .conf against the live platform ranges")
     common(sp, samples=False)

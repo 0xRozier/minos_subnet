@@ -216,3 +216,27 @@ class TestManifest:
                                          "reference": "ref.fa", "sdf": "ref.sdf"}]))
         with pytest.raises(SystemExit):
             oc.load_manifest(manifest, holdout=0)
+
+
+def test_sha256_matches_hashlib(tmp_path):
+    import hashlib
+    f = tmp_path / "x.bin"
+    f.write_bytes(b"minos" * 100000)
+    assert oc._sha256(f) == hashlib.sha256(f.read_bytes()).hexdigest()
+
+
+def test_network_scores_takes_top1_and_rank20(monkeypatch):
+    import httpx
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"entries": [{"combined_final": 0.80 + i / 1000} for i in range(25)]
+                    + [{"combined_final": None}]}
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _Resp())
+    top, r20 = oc._network_scores("https://x", "r")
+    assert top == pytest.approx(82.4)
+    assert r20 == pytest.approx(80.5)

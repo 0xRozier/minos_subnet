@@ -65,6 +65,24 @@ Everything lives in `optimize_runs/<tool>/`: the chosen samples
 (`samples.json`), every (config, sample) result (`evals.jsonl`) and the Optuna
 study (`study.db`). Delete the directory to start over with new samples.
 
+## Tuning on real network rounds (recommended)
+
+Round files are public once a round closes (`/verification/round/{id}`), and
+every round's leaderboard is public once identities are revealed. One command
+downloads the most recent finalized rounds, checks each file against the hash
+the platform committed to before the round, and writes a manifest that
+includes the top-1 and rank-20 scores to beat on each:
+
+```bash
+python scripts/optimize_config.py fetch-rounds --count 8          # chr12,chr13 by default
+python scripts/optimize_config.py baseline --manifest datasets/rounds/manifest.json \
+    --holdout 2 --run-dir optimize_runs/real --conf configs/gatk.conf
+python scripts/optimize_config.py search   --manifest datasets/rounds/manifest.json \
+    --holdout 2 --run-dir optimize_runs/real --trials 40
+```
+
+The per-sample report then shows `vs top1` and `vs top20` for every round.
+
 ## Using your own rounds (`--manifest`)
 
 Practice samples only cover chr18–chr22. If you have real network rounds on
