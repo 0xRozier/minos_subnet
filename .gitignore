@@ -90,3 +90,4 @@ htmlcov/
 .aider*
 .windsurfrules
 optimize_runs/
+datasets/rounds/
