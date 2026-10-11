@@ -8,11 +8,15 @@
 set -u
 cd "$(dirname "$0")/.."
 
+# Two overlapping guards must never start two searches on the same study.
+exec 9>/tmp/minos_resume_search.lock
+flock 9
+
 LOG=optimize_runs/real/search.log
 mkdir -p optimize_runs/real
 
 if ! docker info >/dev/null 2>&1; then
-    sudo setsid nohup dockerd >/tmp/dockerd.log 2>&1 </dev/null &
+    sudo setsid nohup dockerd >/tmp/dockerd.log 2>&1 </dev/null 9>&- &
     for _ in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 1; done
 fi
 docker info >/dev/null 2>&1 || { echo "STATUS docker-failed"; exit 1; }
@@ -27,7 +31,7 @@ else
         --run-dir optimize_runs/real --trials "${TRIALS:-40}" \
         --conf configs/candidates/user/soft_thr65.conf configs/candidates/user/soft_base.conf \
         --params min_pruning,standard_min_confidence_threshold_for_calling,heterozygosity,min_dangling_branch_length,min_mapping_quality_score,min_base_quality_score,base_quality_score_threshold,pcr_indel_model,phred_scaled_global_read_mismapping_rate,pair_hmm_gap_continuation_penalty,pruning_lod_threshold \
-        >>"$LOG" 2>&1 </dev/null &
+        >>"$LOG" 2>&1 </dev/null 9>&- &
     state=restarted
 fi
 
