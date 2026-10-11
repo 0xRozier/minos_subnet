@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11. Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-11 à 19 h 30 UTC (§3.3, §3.5, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -63,14 +63,32 @@ cas.
 Rounds du 10/10 16:42 au 11/10 02:18. Les 2 derniers (chr12:6–14M,
 chr13:37–45M) sont mis de côté pour la validation finale.
 
-| Config | Moyenne | Écart moyen vs top 1 | Pire écart |
-|---|---|---|---|
-| Défauts GATK | 75,99 | −6,25 | −12,38 |
-| `soft_thr65` reconstruite (`journal_best`) | **80,42** | **−1,82** | −2,25 |
-| idem + `contamination_fraction_to_filter=0.05` | ≈80,35 | −1,89 | −2,38 |
-| `soft_thr65`, `soft_base`, `ei_best`, `gatk_defaults_plus`, `ei_balanced` (fichiers exacts) | *en cours* | | |
+Toutes les configs sont mesurées **telles que les validateurs les exécutent**,
+c'est-à-dire avec les valeurs hors bornes remises à leur défaut.
 
-Détail de `journal_best` :
+| Config | Moyenne (8 rounds) | Écart moyen vs top 1 |
+|---|---|---|
+| **`soft_thr65`** (ta prod) | **80,42** | **−1,82** |
+| `journal_best` (ma reconstruction de `soft_thr65`) | 80,42 | −1,82 |
+| `soft_thr65` + `contamination_fraction_to_filter=0.05` | 80,35 | −1,89 |
+| `soft_base` (seuil 42,7) | 80,24 | −2,00 |
+| `ei_best` | 79,53 | −2,71 |
+| `gatk_defaults_plus` | 77,13 | −5,11 |
+| `ei_balanced` | 76,57 | −5,67 |
+| Défauts GATK | 75,99 | −6,25 |
+
+- `soft_thr65` est ta meilleure config. Ma reconstruction à partir du journal
+  donne exactement le même score : les écarts d'arrondi (adaptive pruning,
+  indel_het, pruning_lod) n'ont aucun effet.
+- **La config dédiée à chr12 n'apporte rien.** Sur les 4 rounds chr12,
+  `soft_thr65` fait 78,93 contre 78,77 pour `soft_base` (sur chr13 : 81,90 contre
+  81,72). Le gain de `soft_base` sur chr12 dans le journal venait d'un seul
+  round, mesuré avec les soft clips activés.
+- `gatk_defaults_plus` faisait 0,8946 sur un seul round chr19 dans le journal ;
+  ici elle n'est qu'à 77,13. C'est un autre exemple de mesure trompeuse sur
+  un seul round.
+
+Détail de `soft_thr65` :
 
 | Round | Score | Top 1 | Écart | Core | Germline | FP/cible |
 |---|---|---|---|---|---|---|
@@ -117,6 +135,32 @@ Ce qu'on en tire :
   `indel_heterozygosity`, `adaptive_pruning`, `pruning_lod` (2,3–5),
   `max_reads_per_alignment_start`, `recover_all_dangling_branches`.
 
+### 3.5 Phase 2 — variations ciblées autour de `soft_thr65`
+
+Moyenne sur les 6 rounds de tuning. `soft_thr65` y fait 79,577 : c'est plus
+bas que 80,42 parce que les 2 rounds mis de côté, plus faciles, ne sont pas
+comptés.
+
+| Variation (le reste = `soft_thr65`) | Moyenne | Écart |
+|---|---|---|
+| `min_mapping_quality_score=58` | **79,634** | **+0,057** |
+| seuil 75 | 79,578 | +0,001 |
+| `min_pruning=3` | 79,561 | −0,016 |
+| MQ 45 | 79,510 | −0,067 |
+| seuil 55 | 79,497 | −0,080 |
+| `min_pruning=5` | 79,473 | −0,104 |
+| seuil 42,7 (`soft_base`) | 79,416 | −0,161 |
+| `min_dangling_branch_length=15`, `heterozygosity=0.004` | *en cours* | |
+
+- **`soft_thr65` est au sommet d'un plateau.** Aucune retouche d'un paramètre
+  ne gagne plus de 0,06. Le seuil de confiance est neutre entre 55 et 75.
+- MQ 58 fait légèrement mieux : elle gagne sur 4 rounds sur 6 (+0,23 au mieux)
+  et coupe quelques faux positifs. C'est un gain marginal, pas suffisant pour
+  combler l'écart de ~1,8 point.
+- Conclusion provisoire : le chemin vers le top 20 ne passe pas par une petite
+  retouche de `soft_thr65`. La suite de la recherche (combinaisons proposées
+  par Optuna) et la phase 3 (hypothèse 4.2) prennent le relais.
+
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
 1. **Une combinaison que les tests un-paramètre-à-la-fois ne voient pas.** Le
@@ -143,8 +187,8 @@ Ce qu'on en tire :
 | Phase | Quoi | Statut | Critère pour passer à la suite |
 |---|---|---|---|
 | 0 | Outillage : `optimize_config.py` (bornes live, cache, reprise, held-out), `fetch-rounds` (vrais rounds + score top 1/top 20) | ✅ fait | — |
-| 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | 🔄 en cours | Choisir la meilleure comme base |
-| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant des meilleures configs, restreinte aux leviers (§3.4) + paramètres peu explorés (§4.3), ~40 essais (~15–20 h sur 4 cœurs) | à venir | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
+| 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | ✅ fait (§3.3) : `soft_thr65` est la base | Choisir la meilleure comme base |
+| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | 🔄 en cours : 9/40 essais, meilleur +0,057 | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de la meilleure config (hypothèse 4.2), et ajustement des FP `indel_8bp` / `snp_het` | à venir | Idem |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
@@ -188,3 +232,16 @@ python scripts/optimize_config.py search --manifest datasets/rounds/manifest.jso
 python scripts/optimize_config.py report --manifest datasets/rounds/manifest.json \
     --holdout 2 --run-dir optimize_runs/real
 ```
+
+## 8. Notes d'exécution
+
+- La session cloud se met en veille dès qu'aucune tâche n'y tourne, ce qui tue
+  les processus mais garde les fichiers. La recherche a été coupée ainsi une
+  fois (perte d'environ 3 h). Depuis, une tâche de garde de 2 h lance
+  `scripts/resume_search.sh` toutes les 5 minutes et elle est relancée à son
+  expiration. Le script redémarre Docker et la recherche si besoin, sans rien
+  recalculer de ce qui est fini.
+- Le script a montré deux bugs pendant les premiers runs, corrigés depuis : une
+  panne Docker était enregistrée comme un score de 0, et les identifiants de
+  round contenant `:` cassaient les montages Docker. Les résultats affectés ont
+  été effacés et recalculés.
