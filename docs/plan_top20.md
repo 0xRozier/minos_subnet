@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 2 h 50 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 12 h 10 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -236,6 +236,62 @@ MQ haut (54–60) et `pruning_lod_threshold` haut (5–9). Le pruning du graphe
 se fait alors par la vraisemblance plutôt que par le nombre de reads, ce qui
 récupère des vrais indels sans laisser passer plus de FP.
 
+### 3.7 Phase 3 — ablation vers les défauts (4 rounds, terminée)
+
+`soft_thr65` (live) avec un paramètre remis à son défaut ; moyenne sur
+chr12:33–45M, chr13:97–111M, chr12:57–71M, chr13:97–110M. Référence : 78,66.
+
+| Remis à défaut | Moyenne | Écart |
+|---|---|---|
+| Groupe « sans effet » (adaptive pruning, indel_het, max_alt, max_reads, pruning_lod) | 78,66 | 0,00 |
+| `min_assembly_region_size` 98 → 50 | 78,66 | 0,00 |
+| `pair_hmm_gap_continuation_penalty` 15 → 10 | 78,66 | 0,00 |
+| `max_assembly_region_size` 394 → 300 | 78,64 | −0,02 |
+| `min_pruning` 4 → 2 | 78,56 | −0,10 |
+| `heterozygosity` 0,007 → 0,001 | 78,55 | −0,11 |
+| `min_dangling_branch_length` 20 → 4 | 78,55 | −0,11 |
+| `min_base_quality_score` 18 → 10 | 78,46 | −0,20 |
+| `phred_scaled_global_read_mismapping_rate` 28 → 45 | 78,46 | −0,20 |
+| `pcr_indel_model` AGGRESSIVE → CONSERVATIVE | 78,12 | −0,54 |
+| `min_mapping_quality_score` 51 → 20 | 77,27 | **−1,39** |
+| Défauts GATK complets | 73,14 | −5,52 |
+
+- **Hypothèse 4.2 rejetée** : aucun paramètre remis à défaut ne fait mieux.
+- 8 paramètres de `soft_thr65` sont neutres (les 5 du groupe,
+  `min_assembly_region_size`, `pair_hmm_gap_continuation_penalty`, et quasiment
+  `max_assembly_region_size`). Les leviers utiles : MQ (de loin), puis
+  `pcr_indel_model=AGGRESSIVE`, `min_base_quality_score`, `phred`.
+- MQ 51 vs 20 : même core (−0,0008), mais +0,72 FP/cible. MQ agit
+  uniquement sur les faux positifs.
+
+### 3.8 Vérifications sur les leaderboards publics (12/10)
+
+1. **Notre pipeline local est exact.** Sur chacun des 8 rounds, un miner du
+   réseau a exactement notre score « défauts GATK » (ex. 65,760, 73,773,
+   72,604…). Même chose pour `soft_thr65` sur 4 rounds (probablement ton
+   miner). L'écart mesuré est donc réel, pas un artefact local.
+2. **Le top 20 est 100 % GATK** sur les 8 rounds. Meilleur bcftools : −2 à
+   −7 points, meilleur DeepVariant : −5 à −13 points. Changer d'outil n'est
+   pas la solution.
+3. **Le classement réel de `soft_thr65` est 55e–68e sur ~70.** Une
+   soixantaine de miners font mieux, probablement avec une même config
+   partagée. Le repo n'en recommande aucune.
+4. **L'écart avec le top vient uniquement des faux positifs.** D'après
+   `/scoring/detailed/{hotkey}` (2 rounds encore en historique) :
+
+| Round | | Score | Core | Germline | FP région (SNP + indel) |
+|---|---|---|---|---|---|
+| chr13:97–111M | top | 79,30 | 0,8582 | 0,641 | 1 740 (824 + 916) |
+| | `soft_thr65` | 77,37 | 0,8565 | 0,581 | 2 127 (~1 000 + ~1 120) |
+| chr12:57–71M | top | 79,53 | 0,8374 | 0,697 | 1 426 (663 + 763) |
+| | `soft_thr65` | 77,28 | 0,8356 | 0,626 | 1 850 |
+
+   Même core (à 0,002 près), mais environ 20 % de faux positifs en moins,
+   répartis entre SNP et indels. **La cible est maintenant précise : couper
+   ~20 % des FP de la région sans toucher au core.** Ça contredit le
+   diagnostic « gap de core » du journal, qui comparait des régions
+   différentes.
+
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
 1. **Une combinaison que les tests un-paramètre-à-la-fois ne voient pas.** Le
@@ -264,7 +320,7 @@ récupère des vrais indels sans laisser passer plus de FP.
 | 0 | Outillage : `optimize_config.py` (bornes live, cache, reprise, held-out), `fetch-rounds` (vrais rounds + score top 1/top 20) | ✅ fait | — |
 | 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | ✅ fait (§3.3) : `soft_thr65` est la base | Choisir la meilleure comme base |
 | 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | ✅ fait (§3.6) : aucun gain confirmé sur les rounds mis de côté, `soft_thr65` reste la prod | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
-| 3 | Ablation « vers les défauts » de `soft_thr65` (hypothèse 4.2) : 10 paramètres remis à défaut un par un + 1 groupe (les paramètres « sans effet » du journal), sur 4 rounds (2 chr12, 2 chr13), puis confirmation sur 8 rounds de ce qui ne perd rien. Configs dans `configs/candidates/ablation/` | 🔄 lancée le 12/10 vers 7 h 30 UTC (~3–4 h) | Idem |
+| 3 | Ablation « vers les défauts » de `soft_thr65` (hypothèse 4.2) : 10 paramètres remis à défaut un par un + 1 groupe (les paramètres « sans effet » du journal), sur 4 rounds (2 chr12, 2 chr13), puis confirmation sur 8 rounds de ce qui ne perd rien. Configs dans `configs/candidates/ablation/` | ✅ fait (§3.7) : hypothèse rejetée | Idem |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
 | 6 | Entretien : une fois par semaine, `fetch-rounds` sur des rounds neufs, puis `baseline` sur la config en prod pour détecter une dérive | continu | — |
