@@ -38,6 +38,18 @@ case "$JOB" in
          --run-dir optimize_runs/real
          --conf configs/candidates/user/soft_thr65.conf configs/candidates/ablation/*.conf)
     ;;
+  fpprobe)
+    # Phase 4: soft_thr65 pushed in the false-positive-cutting direction on
+    # parameters only ever tested at their default, on the 2 rounds where the
+    # top miner's region FP counts are public.
+    LOG=optimize_runs/real/fpprobe.log
+    PATTERN="manifest_fp.json"
+    DONE="=> fp_recover"
+    CMD=(python3 scripts/optimize_config.py baseline --tool gatk
+         --manifest datasets/rounds/manifest_fp.json --holdout 0
+         --run-dir optimize_runs/real
+         --conf configs/candidates/user/soft_thr65.conf configs/candidates/fp_probe/*.conf)
+    ;;
   *) echo "STATUS unknown JOB=$JOB"; exit 2 ;;
 esac
 
@@ -56,7 +68,7 @@ else
     state=restarted
 fi
 
-if [ "$JOB" = ablation ]; then
+if [ "$JOB" != search ]; then
     echo "STATUS $state | $(grep -c '\] chr.*\[[0-9]*s\]' "$LOG" 2>/dev/null) runs done"
     exit 0
 fi
