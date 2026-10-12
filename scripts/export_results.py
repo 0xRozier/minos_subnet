@@ -40,7 +40,7 @@ def names_by_hash(ranges, run_dir: Path):
     # Your own configs name a hash first, then the generated candidates.
     confs = [c for c in (REPO / "configs").rglob("*.conf")
              if c.parent.name != "configs" or c.name.startswith("gatk")]
-    confs.sort(key=lambda c: (0 if "/user/" in str(c) else 1 if c.parent.name == "candidates" else 2, str(c)))
+    confs.sort(key=lambda c: (0 if c.parent.name == "user" else 1 if c.parent.name == "candidates" else 2, str(c)))
     for conf in confs:
         try:
             opts = oc.base_options("gatk", ranges)
