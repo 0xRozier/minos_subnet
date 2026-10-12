@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 12 h 10 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 16 h 20 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -292,6 +292,37 @@ chr12:33–45M, chr13:97–111M, chr12:57–71M, chr13:97–110M. Référence : 
    diagnostic « gap de core » du journal, qui comparait des régions
    différentes.
 
+### 3.9 Phases 3b–3c — leviers « faux positifs » : criblage puis plan factoriel
+
+Sur les 2 rounds où les FP du top sont connus (chr13:97–111M, chr12:57–71M).
+Référence `soft_thr65` : 77,32.
+
+**Criblage un par un** : `max_reads_per_alignment_start=25`,
+`contamination_fraction_to_filter=0.03`, `indel_heterozygosity=3e-5`,
+`max_alternate_alleles=2`, `recover_all_dangling_branches=true` → 77,32 (aucun
+effet, VCF quasi identique). `active_probability_threshold=0.01` → 77,31,
+`assembly_region_padding=25` → 77,36. `active_probability_threshold=0.05` →
+**59,33** (catastrophique : à ne jamais utiliser).
+
+**Plan factoriel 2^(7-3) résolution IV** (16 configs, `scripts/make_factorial.py`).
+Effets principaux (niveau haut − niveau bas) :
+
+| Levier | Score | Core | FP/cible |
+|---|---|---|---|
+| `assembly_region_padding` 100 → 25 | +0,114 | +0,0013 | −0,009 |
+| `active_probability_threshold` 0,002 → 0,01 | +0,070 | +0,0006 | −0,011 |
+| les 5 autres | 0,00 à −0,006 | 0 | ~0 |
+
+**Interaction** : les 4 configs qui combinent padding 25 **et** apt 0,01
+(fac06/07/14/15) font **77,50, soit +0,18**, alors que chacun seul ne fait
+presque rien. C'est exactement le genre d'effet qu'un criblage un par un ne
+voit pas. (Contraste BC = +0,085, aliasé avec AE et DF, mais A, D, E et F n'ont
+aucun effet, donc l'interaction vient de BC.)
+
+Gain modeste par rapport aux ~1,8 point qui manquent, et mesuré sur 2 rounds
+seulement : validation de `configs/candidates/sc65_apt01_pad25.conf` sur les
+8 rounds en cours.
+
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
 1. **Une combinaison que les tests un-paramètre-à-la-fois ne voient pas.** Le
@@ -321,7 +352,7 @@ chr12:33–45M, chr13:97–111M, chr12:57–71M, chr13:97–110M. Référence : 
 | 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | ✅ fait (§3.3) : `soft_thr65` est la base | Choisir la meilleure comme base |
 | 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | ✅ fait (§3.6) : aucun gain confirmé sur les rounds mis de côté, `soft_thr65` reste la prod | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de `soft_thr65` (hypothèse 4.2) : 10 paramètres remis à défaut un par un + 1 groupe (les paramètres « sans effet » du journal), sur 4 rounds (2 chr12, 2 chr13), puis confirmation sur 8 rounds de ce qui ne perd rien. Configs dans `configs/candidates/ablation/` | ✅ fait (§3.7) : hypothèse rejetée | Idem |
-| 3b | Sonde « faux positifs » : 8 paramètres jamais poussés dans le sens qui coupe les FP (max_reads 25, apt 0,01/0,05, padding 25, max_alt 2, contamination 0,03, indel_het 3e-5, recover=true), sur les 2 rounds où les FP du top sont connus. Configs dans `configs/candidates/fp_probe/` | 🔄 lancée le 12/10 vers 12 h 20 UTC (~1 h 30) | Couper ≥ 10 % des FP à core égal |
+| 3b | Sonde « faux positifs » : 8 paramètres jamais poussés dans le sens qui coupe les FP (max_reads 25, apt 0,01/0,05, padding 25, max_alt 2, contamination 0,03, indel_het 3e-5, recover=true), sur les 2 rounds où les FP du top sont connus. Configs dans `configs/candidates/fp_probe/` | ✅ fait (§3.9) : seule l'interaction padding 25 × apt 0,01 ressort (+0,18 sur 2 rounds) ; validation sur 8 rounds en cours | Couper ≥ 10 % des FP à core égal |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
 | 6 | Entretien : une fois par semaine, `fetch-rounds` sur des rounds neufs, puis `baseline` sur la config en prod pour détecter une dérive | continu | — |
