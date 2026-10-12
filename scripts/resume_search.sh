@@ -50,6 +50,17 @@ case "$JOB" in
          --run-dir optimize_runs/real
          --conf configs/candidates/user/soft_thr65.conf configs/candidates/fp_probe/*.conf)
     ;;
+  factorial)
+    # Phase 3c: 2^(7-3) fractional factorial around soft_thr65 on the same
+    # 2 rounds (configs written by scripts/make_factorial.py).
+    LOG=optimize_runs/real/factorial.log
+    PATTERN="candidates/factorial/fac"
+    DONE="=> fac15"
+    [ -f configs/candidates/factorial/fac15.conf ] || python3 scripts/make_factorial.py >>"$LOG" 2>&1
+    CMD=(python3 scripts/optimize_config.py baseline --tool gatk
+         --manifest datasets/rounds/manifest_fp.json --holdout 0
+         --run-dir optimize_runs/real --conf configs/candidates/factorial/fac*.conf)
+    ;;
   *) echo "STATUS unknown JOB=$JOB"; exit 2 ;;
 esac
 
