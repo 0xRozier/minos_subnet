@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-11 à 22 h 30 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 2 h 10 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -187,6 +187,20 @@ rounds sur 6, surtout par le core (jusqu'à +0,006) plus que par les FP.
 Gain encore loin des ~1,8 point qui manquent, et pas encore validé sur les 2
 rounds mis de côté : c'est un candidat, pas encore une nouvelle prod.
 
+**Point à 2 h 10 UTC (39/40 essais) :** deux nouveaux meilleurs, de la même
+famille que l'essai 15.
+
+| Essai | Moyenne | vs `soft_thr65` | Par round | Différences clés |
+|---|---|---|---|---|
+| **35** | **79,906** | **+0,33** | +0,35, +0,41, +0,90, −0,42, +0,22, +0,53 | pruning 2, seuil 73, het 0,0021, dang 15, MQ 59, mbqs 30, bqst 14, phred 30, gap 17, plod 6,3 |
+| 34 | 79,863 | +0,29 | −0,08, +0,12, +0,61, −0,15, +0,43, +0,79 | pruning 2, seuil 78, het 0,0014, dang 16, MQ 46, mbqs 27, bqst 28, phred 35, gap 26, plod 3,2 |
+| 15 | 79,855 | +0,28 | +0,07, +0,01, +0,52, −0,23, +0,73, +0,57 | voir tableau ci-dessus |
+
+Les trois ont en commun `min_pruning=2`, un seuil de 72 à 78,
+`heterozygosity` autour de 0,001–0,002 et `min_base_quality_score` vers 26–30.
+Tous perdent sur le même round (chr13:97–110M). Après le dernier essai, les
+5 meilleurs sont rejoués sur les 2 rounds mis de côté.
+
 Tendance : Optuna remonte vers des configs avec `min_pruning` bas (2–3),
 MQ haut (54–60) et `pruning_lod_threshold` haut (5–9). Le pruning du graphe
 se fait alors par la vraisemblance plutôt que par le nombre de reads, ce qui
@@ -219,7 +233,7 @@ récupère des vrais indels sans laisser passer plus de FP.
 |---|---|---|---|
 | 0 | Outillage : `optimize_config.py` (bornes live, cache, reprise, held-out), `fetch-rounds` (vrais rounds + score top 1/top 20) | ✅ fait | — |
 | 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | ✅ fait (§3.3) : `soft_thr65` est la base | Choisir la meilleure comme base |
-| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | 🔄 en cours : 25/40 essais, meilleur +0,28 (§3.6) | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
+| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | 🔄 39/40 essais, meilleur +0,33 (§3.6) ; validation held-out en cours | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de la meilleure config (hypothèse 4.2), et ajustement des FP `indel_8bp` / `snp_het` | à venir | Idem |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
