@@ -62,8 +62,9 @@ def quantiles(values):
 def main(work: str) -> None:
     groups = defaultdict(list)  # (type, decision) -> feature dicts
     for run in sorted(Path(work).iterdir()):
-        gvcf, hvcf = run / "output.vcf.gz", run / "happy_output.vcf.gz"
-        if not (gvcf.exists() and hvcf.exists()):
+        gvcf = run / "output.vcf.gz"
+        hvcf = next(iter(sorted(run.glob("happy_*.vcf.gz"))), None)
+        if not (gvcf.exists() and hvcf):
             continue
         calls = gatk_records(gvcf)
         for chrom, pos, bd in decisions(hvcf):
