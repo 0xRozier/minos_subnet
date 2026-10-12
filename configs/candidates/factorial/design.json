@@ -1,0 +1,233 @@
+{
+ "factors": [
+  {
+   "letter": "A",
+   "param": "max_reads_per_alignment_start",
+   "high": "25"
+  },
+  {
+   "letter": "B",
+   "param": "active_probability_threshold",
+   "high": "0.01"
+  },
+  {
+   "letter": "C",
+   "param": "assembly_region_padding",
+   "high": "25"
+  },
+  {
+   "letter": "D",
+   "param": "max_alternate_alleles",
+   "high": "2"
+  },
+  {
+   "letter": "E",
+   "param": "contamination_fraction_to_filter",
+   "high": "0.03"
+  },
+  {
+   "letter": "F",
+   "param": "indel_heterozygosity",
+   "high": "0.00003"
+  },
+  {
+   "letter": "G",
+   "param": "recover_all_dangling_branches",
+   "high": "true"
+  }
+ ],
+ "runs": [
+  {
+   "name": "fac00",
+   "signs": {
+    "A": -1,
+    "B": -1,
+    "C": -1,
+    "D": -1,
+    "E": -1,
+    "F": -1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac01",
+   "signs": {
+    "A": -1,
+    "B": -1,
+    "C": -1,
+    "D": 1,
+    "E": -1,
+    "F": 1,
+    "G": 1
+   }
+  },
+  {
+   "name": "fac02",
+   "signs": {
+    "A": -1,
+    "B": -1,
+    "C": 1,
+    "D": -1,
+    "E": 1,
+    "F": 1,
+    "G": 1
+   }
+  },
+  {
+   "name": "fac03",
+   "signs": {
+    "A": -1,
+    "B": -1,
+    "C": 1,
+    "D": 1,
+    "E": 1,
+    "F": -1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac04",
+   "signs": {
+    "A": -1,
+    "B": 1,
+    "C": -1,
+    "D": -1,
+    "E": 1,
+    "F": 1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac05",
+   "signs": {
+    "A": -1,
+    "B": 1,
+    "C": -1,
+    "D": 1,
+    "E": 1,
+    "F": -1,
+    "G": 1
+   }
+  },
+  {
+   "name": "fac06",
+   "signs": {
+    "A": -1,
+    "B": 1,
+    "C": 1,
+    "D": -1,
+    "E": -1,
+    "F": -1,
+    "G": 1
+   }
+  },
+  {
+   "name": "fac07",
+   "signs": {
+    "A": -1,
+    "B": 1,
+    "C": 1,
+    "D": 1,
+    "E": -1,
+    "F": 1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac08",
+   "signs": {
+    "A": 1,
+    "B": -1,
+    "C": -1,
+    "D": -1,
+    "E": 1,
+    "F": -1,
+    "G": 1
+   }
+  },
+  {
+   "name": "fac09",
+   "signs": {
+    "A": 1,
+    "B": -1,
+    "C": -1,
+    "D": 1,
+    "E": 1,
+    "F": 1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac10",
+   "signs": {
+    "A": 1,
+    "B": -1,
+    "C": 1,
+    "D": -1,
+    "E": -1,
+    "F": 1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac11",
+   "signs": {
+    "A": 1,
+    "B": -1,
+    "C": 1,
+    "D": 1,
+    "E": -1,
+    "F": -1,
+    "G": 1
+   }
+  },
+  {
+   "name": "fac12",
+   "signs": {
+    "A": 1,
+    "B": 1,
+    "C": -1,
+    "D": -1,
+    "E": -1,
+    "F": 1,
+    "G": 1
+   }
+  },
+  {
+   "name": "fac13",
+   "signs": {
+    "A": 1,
+    "B": 1,
+    "C": -1,
+    "D": 1,
+    "E": -1,
+    "F": -1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac14",
+   "signs": {
+    "A": 1,
+    "B": 1,
+    "C": 1,
+    "D": -1,
+    "E": 1,
+    "F": -1,
+    "G": -1
+   }
+  },
+  {
+   "name": "fac15",
+   "signs": {
+    "A": 1,
+    "B": 1,
+    "C": 1,
+    "D": 1,
+    "E": 1,
+    "F": 1,
+    "G": 1
+   }
+  }
+ ]
+}
