@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 16 h 50 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 20 h 50 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -331,6 +331,40 @@ régulier et sans risque (même core, un peu moins de FP). Recommandation :
 l'adopter comme nouvelle prod, en sachant qu'il ne change pas le classement à
 lui seul.
 
+### 3.10 Diagnostic des faux positifs (12/10 soir)
+
+**Comparaison avec le top sur 5 rounds récents** (métriques publiques de
+`/scoring/detailed`, notre `sc65_apt01_pad25` lancé sur les mêmes rounds) :
+l'écart vient surtout des **FP indels**, +20 à +71 % vs le top (743 vs 464,
+1 104 vs 644…). On trouve même un peu **plus** d'indels synthétiques que le
+top (FN 8 vs 13). FP SNP : +10 à +25 %. het/hom et ti/tv quasi identiques.
+
+**Autopsie** (`scripts/fp_autopsy.py`) : nos FP indels sont surtout des
+appels **homozygotes à faible profondeur** (DP médiane 17 vs 23, GQ 65 vs 99,
+55 % en 1/1), et **61 % sont dans des répétitions ≥ 10 pb** (homopolymères,
+STR), contre 29 % des vrais indels. Beaucoup sont sans doute de vrais indels
+hors des régions de confiance GIAB, mais ils comptent comme FP sur la région.
+
+**Angle mort de la recherche** : `pcr_indel_model`, le paramètre qui règle
+la pénalité des indels dans les répétitions, n'a été essayé qu'en
+`AGGRESSIVE` sur les 42 essais Optuna.
+
+**Test `HOSTILE`** (5 rounds) :
+
+| Round | FP indels top / AGGR / HOST | Indels synth. trouvés top / AGGR / HOST | Score AGGR → HOST |
+|---|---|---|---|
+| chr13:21–29M | 464 / 743 / 495 | 192 / 197 / 182 | 84,62 → 84,22 |
+| chr13:65–71M | 305 / 385 / 296 | 52 / 53 / 49 | 88,56 → 85,50 |
+| chr13:26–40M | 841 / 1 079 / 801 | 192 / 198 / 176 | 81,75 → 78,77 |
+| chr12:84–89M | 233 / 279 / 208 | 103 / 101 / 97 | 88,66 → 86,09 |
+| chr12:118–130M | 644 / 1 104 / 725 | 110 / 115 / 102 | 78,68 → 78,39 |
+
+`HOSTILE` ramène nos FP indels **au niveau du top**, mais perd trop de vrais
+indels (score −1,9 en moyenne). Le top a les FP d'un `HOSTILE` avec presque
+le rappel d'un `AGGRESSIVE` : il combine vraisemblablement `HOSTILE` avec des
+réglages qui récupèrent du rappel. → Phase 4 : recherche Optuna dans la zone
+`HOSTILE`.
+
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
 1. **Une combinaison que les tests un-paramètre-à-la-fois ne voient pas.** Le
@@ -361,6 +395,7 @@ lui seul.
 | 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | ✅ fait (§3.6) : aucun gain confirmé sur les rounds mis de côté, `soft_thr65` reste la prod | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de `soft_thr65` (hypothèse 4.2) : 10 paramètres remis à défaut un par un + 1 groupe (les paramètres « sans effet » du journal), sur 4 rounds (2 chr12, 2 chr13), puis confirmation sur 8 rounds de ce qui ne perd rien. Configs dans `configs/candidates/ablation/` | ✅ fait (§3.7) : hypothèse rejetée | Idem |
 | 3b | Sonde « faux positifs » : 8 paramètres jamais poussés dans le sens qui coupe les FP (max_reads 25, apt 0,01/0,05, padding 25, max_alt 2, contamination 0,03, indel_het 3e-5, recover=true), sur les 2 rounds où les FP du top sont connus. Configs dans `configs/candidates/fp_probe/` | ✅ fait (§3.9) : seule l'interaction padding 25 × apt 0,01 ressort (+0,18 sur 2 rounds), confirmée sur 8 rounds : +0,11, 7 rounds sur 8 | Couper ≥ 10 % des FP à core égal |
+| 3d | Recherche Optuna en `HOSTILE` (base `sc65_hostile`) sur 13 paramètres de rappel/précision, 8 variations ciblées en tête de file, 8 rounds dont 2 mis de côté (`JOB=hostile`) | 🔄 lancée le 12/10 à 20 h 45 UTC (~10–15 h) | Gain confirmé sur les rounds mis de côté |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
 | 6 | Entretien : une fois par semaine, `fetch-rounds` sur des rounds neufs, puis `baseline` sur la config en prod pour détecter une dérive | continu | — |

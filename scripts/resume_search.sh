@@ -73,6 +73,19 @@ case "$JOB" in
          --run-dir optimize_runs/diag --keep-outputs
          --conf configs/candidates/sc65_apt01_pad25.conf configs/candidates/user/soft_thr65.conf)
     ;;
+  hostile)
+    # Phase 4: Optuna search in the pcr_indel_model=HOSTILE region (fixed via
+    # the base config), over the parameters that win back indel recall.
+    LOG=optimize_runs/hostile/search.log
+    PATTERN="run-dir optimize_runs/hostile"
+    DONE="Best config written"
+    CMD=(python3 scripts/optimize_config.py search --tool gatk
+         --manifest datasets/rounds/manifest.json --holdout 2
+         --run-dir optimize_runs/hostile --trials "${TRIALS:-40}"
+         --output configs/candidates/hostile_search_best.conf
+         --conf configs/candidates/sc65_hostile.conf
+         --params min_pruning,standard_min_confidence_threshold_for_calling,min_dangling_branch_length,pruning_lod_threshold,pair_hmm_gap_continuation_penalty,indel_heterozygosity,heterozygosity,min_mapping_quality_score,min_base_quality_score,base_quality_score_threshold,phred_scaled_global_read_mismapping_rate,active_probability_threshold,assembly_region_padding)
+    ;;
   *) echo "STATUS unknown JOB=$JOB"; exit 2 ;;
 esac
 
@@ -91,16 +104,16 @@ else
     state=restarted
 fi
 
-if [ "$JOB" != search ]; then
+if [ "$JOB" != search ] && [ "$JOB" != hostile ]; then
     echo "STATUS $state | $(grep -c '\] chr.*\[[0-9]*s\]' "$LOG" 2>/dev/null) runs done"
     exit 0
 fi
 
-python3 - "$state" <<'EOF'
+python3 - "$state" "$JOB" <<'EOF'
 import sqlite3, sys
 state = sys.argv[1]
 try:
-    db = sqlite3.connect("optimize_runs/real/study.db")
+    db = sqlite3.connect("optimize_runs/real/study.db" if sys.argv[2] == "search" else f"optimize_runs/{sys.argv[2]}/study.db")
     rows = db.execute("SELECT state, COUNT(*) FROM trials GROUP BY state").fetchall()
     best = db.execute("SELECT MAX(v.value) FROM trial_values v JOIN trials t "
                       "ON t.trial_id = v.trial_id WHERE t.state = 'COMPLETE'").fetchone()[0]
