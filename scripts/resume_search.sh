@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Keep the real-round GATK search running across container restarts.
+# Keep a long real-round job (JOB=search, default, or JOB=ablation) running
+# across container restarts.
 #
 # Idempotent: starts the Docker daemon if it is down, then starts the search
 # if it is not already running. The search resumes from optimize_runs/real
@@ -12,8 +13,33 @@ cd "$(dirname "$0")/.."
 exec 9>/tmp/minos_resume_search.lock
 flock 9
 
-LOG=optimize_runs/real/search.log
+JOB=${JOB:-search}
 mkdir -p optimize_runs/real
+
+case "$JOB" in
+  search)
+    LOG=optimize_runs/real/search.log
+    PATTERN="optimize_config.py search"
+    DONE="Best config written"
+    CMD=(python3 scripts/optimize_config.py search --tool gatk
+         --manifest datasets/rounds/manifest.json --holdout 2
+         --run-dir optimize_runs/real --trials "${TRIALS:-40}"
+         --conf configs/candidates/user/soft_thr65.conf configs/candidates/user/soft_base.conf
+         --params min_pruning,standard_min_confidence_threshold_for_calling,heterozygosity,min_dangling_branch_length,min_mapping_quality_score,min_base_quality_score,base_quality_score_threshold,pcr_indel_model,phred_scaled_global_read_mismapping_rate,pair_hmm_gap_continuation_penalty,pruning_lod_threshold)
+    ;;
+  ablation)
+    # Phase 3: soft_thr65 with one parameter (or one group) reset to its
+    # default, on 4 rounds. Shares the cache with the search.
+    LOG=optimize_runs/real/ablation.log
+    PATTERN="optimize_config.py baseline"
+    DONE="=> def_phred_scaled"
+    CMD=(python3 scripts/optimize_config.py baseline --tool gatk
+         --manifest datasets/rounds/manifest_ablation.json --holdout 0
+         --run-dir optimize_runs/real
+         --conf configs/candidates/user/soft_thr65.conf configs/candidates/ablation/*.conf)
+    ;;
+  *) echo "STATUS unknown JOB=$JOB"; exit 2 ;;
+esac
 
 if ! docker info >/dev/null 2>&1; then
     sudo setsid nohup dockerd >/tmp/dockerd.log 2>&1 </dev/null 9>&- &
@@ -21,18 +47,18 @@ if ! docker info >/dev/null 2>&1; then
 fi
 docker info >/dev/null 2>&1 || { echo "STATUS docker-failed"; exit 1; }
 
-if pgrep -f "optimize_config.py search" >/dev/null; then
+if pgrep -f "$PATTERN" >/dev/null; then
     state=running
-elif grep -q "Best config written" "$LOG" 2>/dev/null; then
+elif grep -q "$DONE" "$LOG" 2>/dev/null; then
     state=finished
 else
-    setsid nohup python3 scripts/optimize_config.py search --tool gatk \
-        --manifest datasets/rounds/manifest.json --holdout 2 \
-        --run-dir optimize_runs/real --trials "${TRIALS:-40}" \
-        --conf configs/candidates/user/soft_thr65.conf configs/candidates/user/soft_base.conf \
-        --params min_pruning,standard_min_confidence_threshold_for_calling,heterozygosity,min_dangling_branch_length,min_mapping_quality_score,min_base_quality_score,base_quality_score_threshold,pcr_indel_model,phred_scaled_global_read_mismapping_rate,pair_hmm_gap_continuation_penalty,pruning_lod_threshold \
-        >>"$LOG" 2>&1 </dev/null 9>&- &
+    setsid nohup "${CMD[@]}" >>"$LOG" 2>&1 </dev/null 9>&- &
     state=restarted
+fi
+
+if [ "$JOB" = ablation ]; then
+    echo "STATUS $state | $(grep -c '\] chr.*\[[0-9]*s\]' "$LOG" 2>/dev/null) runs done"
+    exit 0
 fi
 
 python3 - "$state" <<'EOF'
