@@ -679,6 +679,13 @@ def score_sample(tool: str, options: Dict[str, Any], sample: Dict[str, Any],
         "gate_ok": plausibility_gate(metrics),
         "class_f1": {k: _f1(c) for k, c in counts.items()},
         "class_counts": counts,
+        # The fields the platform publishes per miner (/scoring/detailed), so a
+        # run can be compared with a network miner's on the same round.
+        "metrics": {k: metrics.get(k) for k in (
+            "tp_snp", "fn_snp", "fp_snp", "tp_indel", "fn_indel", "fp_indel",
+            "region_fp_snp", "region_fp_indel", "region_fp_total", "fp_per_target",
+            "target_total_snp", "target_total_indel", "titv_query_snp", "titv_truth_snp",
+            "hethom_query_snp", "hethom_truth_snp", "hethom_query_indel")},
     })
     if not keep:
         shutil.rmtree(work_dir, ignore_errors=True)

@@ -61,6 +61,18 @@ case "$JOB" in
          --manifest datasets/rounds/manifest_fp.json --holdout 0
          --run-dir optimize_runs/real --conf configs/candidates/factorial/fac*.conf)
     ;;
+  diag)
+    # FP diagnosis: the two best configs on 5 recent rounds where the top
+    # network miner's detailed metrics are public, keeping VCFs for autopsy.
+    LOG=optimize_runs/diag/run.log
+    PATTERN="rounds_diag/manifest.json"
+    DONE="=> soft_thr65"
+    mkdir -p optimize_runs/diag
+    CMD=(python3 scripts/optimize_config.py baseline --tool gatk
+         --manifest datasets/rounds_diag/manifest.json --holdout 0
+         --run-dir optimize_runs/diag --keep-outputs
+         --conf configs/candidates/sc65_apt01_pad25.conf configs/candidates/user/soft_thr65.conf)
+    ;;
   *) echo "STATUS unknown JOB=$JOB"; exit 2 ;;
 esac
 
