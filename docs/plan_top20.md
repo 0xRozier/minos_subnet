@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 16 h 20 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 16 h 50 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -319,9 +319,17 @@ presque rien. C'est exactement le genre d'effet qu'un criblage un par un ne
 voit pas. (Contraste BC = +0,085, aliasé avec AE et DF, mais A, D, E et F n'ont
 aucun effet, donc l'interaction vient de BC.)
 
-Gain modeste par rapport aux ~1,8 point qui manquent, et mesuré sur 2 rounds
-seulement : validation de `configs/candidates/sc65_apt01_pad25.conf` sur les
-8 rounds en cours.
+**Validation sur les 8 rounds** (`configs/candidates/sc65_apt01_pad25.conf`) :
+80,52 contre 80,42 pour `soft_thr65`, soit **+0,11**. Par round : +0,11,
++0,14, +0,23, −0,06, +0,17, +0,14 (réglage) et +0,07, +0,07 (mis de côté).
+Il gagne sur 7 rounds sur 8, et aussi sur les 2 rounds jamais utilisés pour le
+choisir. C'est le premier gain **confirmé** de toute l'étude, mais il reste
+petit : l'écart avec le top passe d'environ −1,82 à −1,72.
+
+Il ne passe pas le seuil de +0,3 de la règle de décision, mais il est
+régulier et sans risque (même core, un peu moins de FP). Recommandation :
+l'adopter comme nouvelle prod, en sachant qu'il ne change pas le classement à
+lui seul.
 
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
@@ -352,7 +360,7 @@ seulement : validation de `configs/candidates/sc65_apt01_pad25.conf` sur les
 | 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | ✅ fait (§3.3) : `soft_thr65` est la base | Choisir la meilleure comme base |
 | 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | ✅ fait (§3.6) : aucun gain confirmé sur les rounds mis de côté, `soft_thr65` reste la prod | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de `soft_thr65` (hypothèse 4.2) : 10 paramètres remis à défaut un par un + 1 groupe (les paramètres « sans effet » du journal), sur 4 rounds (2 chr12, 2 chr13), puis confirmation sur 8 rounds de ce qui ne perd rien. Configs dans `configs/candidates/ablation/` | ✅ fait (§3.7) : hypothèse rejetée | Idem |
-| 3b | Sonde « faux positifs » : 8 paramètres jamais poussés dans le sens qui coupe les FP (max_reads 25, apt 0,01/0,05, padding 25, max_alt 2, contamination 0,03, indel_het 3e-5, recover=true), sur les 2 rounds où les FP du top sont connus. Configs dans `configs/candidates/fp_probe/` | ✅ fait (§3.9) : seule l'interaction padding 25 × apt 0,01 ressort (+0,18 sur 2 rounds) ; validation sur 8 rounds en cours | Couper ≥ 10 % des FP à core égal |
+| 3b | Sonde « faux positifs » : 8 paramètres jamais poussés dans le sens qui coupe les FP (max_reads 25, apt 0,01/0,05, padding 25, max_alt 2, contamination 0,03, indel_het 3e-5, recover=true), sur les 2 rounds où les FP du top sont connus. Configs dans `configs/candidates/fp_probe/` | ✅ fait (§3.9) : seule l'interaction padding 25 × apt 0,01 ressort (+0,18 sur 2 rounds), confirmée sur 8 rounds : +0,11, 7 rounds sur 8 | Couper ≥ 10 % des FP à core égal |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
 | 6 | Entretien : une fois par semaine, `fetch-rounds` sur des rounds neufs, puis `baseline` sur la config en prod pour détecter une dérive | continu | — |
