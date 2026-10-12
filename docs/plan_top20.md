@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 2 h 10 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 2 h 50 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -201,7 +201,37 @@ Les trois ont en commun `min_pruning=2`, un seuil de 72 à 78,
 Tous perdent sur le même round (chr13:97–110M). Après le dernier essai, les
 5 meilleurs sont rejoués sur les 2 rounds mis de côté.
 
-Tendance : Optuna remonte vers des configs avec `min_pruning` bas (2–3),
+**Résultat final (2 h 45 UTC) — validation sur les 2 rounds mis de côté.**
+Les 5 meilleures configs de la recherche, comparées à `soft_thr65` sur
+exactement les mêmes rounds :
+
+| Essai | Réglage (6 rounds) | Mis de côté (2 rounds) | Les 8 rounds |
+|---|---|---|---|
+| 15 | +0,28 | **−0,08** | +0,19 |
+| 34 | +0,29 | **−0,26** | +0,15 |
+| 35 | +0,33 | **−0,42** | +0,14 |
+| 38 | +0,20 | **−0,05** | +0,14 |
+| 26 | +0,09 | +0,30 | +0,14 |
+
+**Aucune config ne passe la règle de décision.** Les configs qui gagnent le
+plus sur les rounds de réglage perdent sur les rounds mis de côté. Leur gain
+de +0,3 était donc du bruit de sélection : en essayant 40 configs, certaines
+ont forcément de la chance sur 6 rounds. `soft_thr65` reste la prod. La
+meilleure de la recherche est gardée comme simple candidate dans
+`configs/candidates/search_trial15.conf`.
+
+Importance des paramètres selon Optuna : `base_quality_score_threshold` 25 %,
+MQ 15 %, `min_dangling_branch_length` 12 %, `pair_hmm_gap_continuation_penalty`
+11 %, `heterozygosity` 10 %, `min_base_quality_score` 10 %. Mais tous ces
+effets restent à l'intérieur de ±0,4 point. L'écart avec le top 1 reste de
+−1,3 à −2,0 sur chaque round, pour toutes les configs.
+
+**Conclusion de la phase 2.** Elle confirme le plateau du journal, cette fois
+sur de vrais rounds chr12/chr13, en version live et avec validation : le
+réglage fin de ces 11 paramètres GATK ne comble pas l'écart. La suite passe
+par la phase 3 (hypothèse 4.2) et par l'analyse des FP en excès.
+
+Tendance observée pendant la recherche : Optuna remonte vers des configs avec `min_pruning` bas (2–3),
 MQ haut (54–60) et `pruning_lod_threshold` haut (5–9). Le pruning du graphe
 se fait alors par la vraisemblance plutôt que par le nombre de reads, ce qui
 récupère des vrais indels sans laisser passer plus de FP.
@@ -233,7 +263,7 @@ récupère des vrais indels sans laisser passer plus de FP.
 |---|---|---|---|
 | 0 | Outillage : `optimize_config.py` (bornes live, cache, reprise, held-out), `fetch-rounds` (vrais rounds + score top 1/top 20) | ✅ fait | — |
 | 1 | Mesurer tes configs exactes, en version live, sur les 8 rounds | ✅ fait (§3.3) : `soft_thr65` est la base | Choisir la meilleure comme base |
-| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | 🔄 39/40 essais, meilleur +0,33 (§3.6) ; validation held-out en cours | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
+| 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | ✅ fait (§3.6) : aucun gain confirmé sur les rounds mis de côté, `soft_thr65` reste la prod | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de la meilleure config (hypothèse 4.2), et ajustement des FP `indel_8bp` / `snp_het` | à venir | Idem |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
