@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-13 à 13 h 45 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-13 à 22 h 30 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -403,9 +403,22 @@ réseau les plus proches sont 77,39 / 77,29 / 82,77 / 86,97 : ils collent à
 la version remise à défaut. L'hypothèse « la plateforme remet à défaut »
 tient.
 
-**Recherche 2** (en cours) : même round, base = défauts GATK, 8 points de
-départ de familles différentes (tes configs + les nôtres), 40 essais au
-hasard avant que l'optimiseur se concentre, 250 essais.
+**Recherche 2** (terminée le 13/10 à 22 h UTC) : même round, base = défauts
+GATK, 8 points de départ de familles différentes (tes configs + les nôtres),
+40 essais au hasard avant que l'optimiseur se concentre, 250 essais.
+Meilleur : **89,34** (core 0,893, germline 0,894, FP 202/262, synth. trouvés
+408/103). 163 essais sur 250 entre 89 et 90 : un plateau très net.
+
+**Conclusion.** 350 essais optimisés sur la réponse même du round, partis de
+toutes les familles de configs, plafonnent à 89,34, alors que 51 miners sur 66
+dépassent 89,75 avec une config unique soumise. Avec le template GATK de ce
+repo et les paramètres dans les bornes live, le score du cluster n'est pas
+atteignable : son avantage vient d'autre chose que d'un meilleur réglage de
+ces 22 paramètres. Le code du validateur (`neurons/validator.py`,
+`_run_miner_tool`) ne garde que `tool`, `version` et `{tool}_options`, puis
+valide avec `templates/tool_params.py` : rien d'autre dans la soumission
+n'est exploitable, et le pipeline est celui qu'on reproduit localement
+(les scores « défauts » tombent exactement sur ceux du réseau).
 
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
