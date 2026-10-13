@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-12 à 20 h 50 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-13 à 4 h 15 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -362,8 +362,17 @@ la pénalité des indels dans les répétitions, n'a été essayé qu'en
 `HOSTILE` ramène nos FP indels **au niveau du top**, mais perd trop de vrais
 indels (score −1,9 en moyenne). Le top a les FP d'un `HOSTILE` avec presque
 le rappel d'un `AGGRESSIVE` : il combine vraisemblablement `HOSTILE` avec des
-réglages qui récupèrent du rappel. → Phase 4 : recherche Optuna dans la zone
+réglages qui récupèrent du rappel. → Phase 3d : recherche Optuna dans la zone
 `HOSTILE`.
+
+**Résultat de la phase 3d (40 essais, 13 paramètres, terminée le 13/10 à
+4 h UTC) : négatif.** Meilleur essai `HOSTILE` : 77,53 sur les 6 rounds de
+réglage, contre 79,70 pour `sc65_apt01_pad25` (`AGGRESSIVE`). Les 8 variations
+ciblées (pruning 2/3, seuil 45, dangling 10, gap 10, indel_het 0,0008, phred 45,
+pruning 2 + seuil 50) restent toutes entre 77,2 et 77,4 ; 30 essais sur 40
+abandonnés en route. Aucun réglage accessible ne récupère, en `HOSTILE`, les
+vrais indels qu'il fait perdre. On ne reproduit donc pas le profil du top
+(FP d'un `HOSTILE`, rappel d'un `AGGRESSIVE`) avec ces paramètres.
 
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 
@@ -395,7 +404,7 @@ réglages qui récupèrent du rappel. → Phase 4 : recherche Optuna dans la zon
 | 2 | Recherche bayésienne sur les 6 rounds de tuning, partant de `soft_thr65`. D'abord 8 variations ciblées (§3.5), puis les propositions d'Optuna, 40 essais (~20 h sur 4 cœurs) | ✅ fait (§3.6) : aucun gain confirmé sur les rounds mis de côté, `soft_thr65` reste la prod | Gain ≥ +0,3 point sur les 6 rounds **et** confirmé sur les 2 rounds mis de côté |
 | 3 | Ablation « vers les défauts » de `soft_thr65` (hypothèse 4.2) : 10 paramètres remis à défaut un par un + 1 groupe (les paramètres « sans effet » du journal), sur 4 rounds (2 chr12, 2 chr13), puis confirmation sur 8 rounds de ce qui ne perd rien. Configs dans `configs/candidates/ablation/` | ✅ fait (§3.7) : hypothèse rejetée | Idem |
 | 3b | Sonde « faux positifs » : 8 paramètres jamais poussés dans le sens qui coupe les FP (max_reads 25, apt 0,01/0,05, padding 25, max_alt 2, contamination 0,03, indel_het 3e-5, recover=true), sur les 2 rounds où les FP du top sont connus. Configs dans `configs/candidates/fp_probe/` | ✅ fait (§3.9) : seule l'interaction padding 25 × apt 0,01 ressort (+0,18 sur 2 rounds), confirmée sur 8 rounds : +0,11, 7 rounds sur 8 | Couper ≥ 10 % des FP à core égal |
-| 3d | Recherche Optuna en `HOSTILE` (base `sc65_hostile`) sur 13 paramètres de rappel/précision, 8 variations ciblées en tête de file, 8 rounds dont 2 mis de côté (`JOB=hostile`) | 🔄 lancée le 12/10 à 20 h 45 UTC (~10–15 h) | Gain confirmé sur les rounds mis de côté |
+| 3d | Recherche Optuna en `HOSTILE` (base `sc65_hostile`) sur 13 paramètres de rappel/précision, 8 variations ciblées en tête de file, 8 rounds dont 2 mis de côté (`JOB=hostile`) | ✅ fait : négatif, meilleur `HOSTILE` 77,53 vs 79,70 (§3.10) | Gain confirmé sur les rounds mis de côté |
 | 4 | Déploiement : une seule config globale (pas de configs par chromosome), passée au `check`, dans `configs/gatk.conf`. Supprimer les `configs/gatk_chr*.conf` | à venir | `check` OK |
 | 5 | Suivi live : comparer ton score réel au score prédit sur 5 rounds (leaderboard public). Un écart > 0,2 point veut dire que le pipeline local diverge et doit être expliqué avant d'aller plus loin | à venir | Prédiction fiable |
 | 6 | Entretien : une fois par semaine, `fetch-rounds` sur des rounds neufs, puis `baseline` sur la config en prod pour détecter une dérive | continu | — |
