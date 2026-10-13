@@ -908,7 +908,7 @@ def cmd_search(args) -> int:
         load_if_exists=True,
         direction="maximize",
         sampler=optuna.samplers.TPESampler(seed=args.seed, multivariate=True,
-                                           n_startup_trials=max(8, len(names) // 2)),
+                                           n_startup_trials=args.startup or max(8, len(names) // 2)),
         pruner=optuna.pruners.MedianPruner(n_startup_trials=8, n_warmup_steps=1)
         if args.prune else optuna.pruners.NopPruner(),
     )
@@ -1212,6 +1212,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--params", default="curated",
                     help="'curated' (default), 'all', or a comma-separated list")
     sp.add_argument("--conf", nargs="*", help="Extra configs to seed the search with")
+    sp.add_argument("--startup", type=int, default=0,
+                    help="Random trials before the sampler starts modelling "
+                         "(default: max(8, half the searched parameters))")
     sp.add_argument("--enqueue", nargs="*", metavar="P=V[,P=V]",
                     help="Variations of the first --conf to try before sampling, "
                          "one trial per argument")

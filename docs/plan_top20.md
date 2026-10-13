@@ -1,6 +1,6 @@
 # Minos SN107 — Observations et plan pour le top 20
 
-*Rédigé le 2026-10-11, mis à jour le 2026-10-13 à 4 h 15 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
+*Rédigé le 2026-10-11, mis à jour le 2026-10-13 à 13 h 45 UTC (§3.3, §3.5, §3.6, §5, §8). Les chiffres viennent de runs réels : GATK 4.5.0.0 →
 hap.py/vcfeval → score v2, le même pipeline que les validateurs, sur des rounds
 réseau récents téléchargés via `/verification`.*
 
@@ -373,6 +373,39 @@ pruning 2 + seuil 50) restent toutes entre 77,2 et 77,4 ; 30 essais sur 40
 abandonnés en route. Aucun réglage accessible ne récupère, en `HOSTILE`, les
 vrais indels qu'il fait perdre. On ne reproduit donc pas le profil du top
 (FP d'un `HOSTILE`, rappel d'un `AGGRESSIVE`) avec ces paramètres.
+
+### 3.11 Peut-on égaler le top sur UN round ? (13/10)
+
+Test décisif proposé : optimiser directement le vrai score d'un seul round,
+sans validation. Si même ainsi on n'atteint pas le top, aucune stratégie
+« une config par round » ne marchera avec ces paramètres.
+
+Round : chr12:84681001-89797000 (5 Mb). Top 90,37, rang 20 90,24.
+
+**Recherche 1** (100 essais, 22 paramètres, base `sc65_apt01_pad25`) :
+plafond à **89,33** (5 meilleurs essais entre 89,25 et 89,33).
+
+| | Score | Core | Germline | FP SNP/indel | Synth. trouvés SNP/indel |
+|---|---|---|---|---|---|
+| Top | 90,37 | 0,904 | 0,904 | 187 / 233 | 403 / 103 |
+| Notre meilleur (#12) | 89,33 | 0,895 | 0,889 | 222 / 264 | 407 / 103 |
+
+Mais le leaderboard de ce round montre **51 miners GATK sur 66 au-dessus de
+89,75**, tous avec une seule config soumise. Une config fixe meilleure que
+notre plafond « oracle » existe donc dans l'espace des paramètres. Nos
+recherches, toutes parties de la même famille de configs, ne l'ont pas
+trouvée.
+
+**Les valeurs hors bornes sont-elles appliquées ?** `soft_thr65` brut (soft
+clips `true`, 201 haplotypes) donne 77,42 / 77,17 / 82,62 / 86,64 sur 4
+rounds, sa version remise à défaut 77,37 / 77,28 / 82,75 / 86,97. Les scores
+réseau les plus proches sont 77,39 / 77,29 / 82,77 / 86,97 : ils collent à
+la version remise à défaut. L'hypothèse « la plateforme remet à défaut »
+tient.
+
+**Recherche 2** (en cours) : même round, base = défauts GATK, 8 points de
+départ de familles différentes (tes configs + les nôtres), 40 essais au
+hasard avant que l'optimiseur se concentre, 250 essais.
 
 ## 4. D'où peut venir l'écart — hypothèses, de la plus à la moins testable
 

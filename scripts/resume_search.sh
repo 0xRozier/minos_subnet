@@ -99,6 +99,24 @@ case "$JOB" in
          --output configs/candidates/oneround_best.conf
          --conf configs/candidates/sc65_apt01_pad25.conf --params all)
     ;;
+  oneround2)
+    # Wider single-round search: GATK defaults as the base, eight seeds from
+    # different config families, 40 random trials before TPE, 250 in all.
+    LOG=optimize_runs/oneround2/search.log
+    PATTERN="run-dir optimize_runs/oneround2"
+    DONE="Best config written"
+    mkdir -p optimize_runs/oneround2
+    CMD=(python3 scripts/optimize_config.py search --tool gatk
+         --manifest datasets/rounds_diag/manifest_one.json --holdout 0
+         --run-dir optimize_runs/oneround2 --trials "${TRIALS:-250}" --no-prune --startup 40
+         --output configs/candidates/oneround2_best.conf --params all
+         --conf configs/candidates/user/gatk_pure_defaults.conf
+                configs/candidates/user/gatk_minimal_competitive.conf
+                configs/candidates/user/gatk_defaults_plus.conf
+                configs/candidates/user/ei_best.conf configs/candidates/user/ei_balanced.conf
+                configs/candidates/user/soft_thr65.conf configs/candidates/sc65_apt01_pad25.conf
+                configs/candidates/oneround_best.conf)
+    ;;
   *) echo "STATUS unknown JOB=$JOB"; exit 2 ;;
 esac
 
@@ -117,7 +135,7 @@ else
     state=restarted
 fi
 
-if [ "$JOB" != search ] && [ "$JOB" != hostile ] && [ "$JOB" != oneround ]; then
+if [ "$JOB" != search ] && [ "$JOB" != hostile ] && [ "$JOB" != oneround ] && [ "$JOB" != oneround2 ]; then
     echo "STATUS $state | $(grep -c '\] chr.*\[[0-9]*s\]' "$LOG" 2>/dev/null) runs done"
     exit 0
 fi
