@@ -86,12 +86,25 @@ case "$JOB" in
          --conf configs/candidates/sc65_hostile.conf
          --params min_pruning,standard_min_confidence_threshold_for_calling,min_dangling_branch_length,pruning_lod_threshold,pair_hmm_gap_continuation_penalty,indel_heterozygosity,heterozygosity,min_mapping_quality_score,min_base_quality_score,base_quality_score_threshold,phred_scaled_global_read_mismapping_rate,active_probability_threshold,assembly_region_padding)
     ;;
+  oneround)
+    # Can any config match the top on ONE round when tuned on that round's
+    # own score? Bayesian search over every tunable parameter on
+    # chr12:84681001-89797000 (top 90.37).
+    LOG=optimize_runs/oneround/search.log
+    PATTERN="run-dir optimize_runs/oneround"
+    DONE="Best config written"
+    CMD=(python3 scripts/optimize_config.py search --tool gatk
+         --manifest datasets/rounds_diag/manifest_one.json --holdout 0
+         --run-dir optimize_runs/oneround --trials "${TRIALS:-100}" --no-prune
+         --output configs/candidates/oneround_best.conf
+         --conf configs/candidates/sc65_apt01_pad25.conf --params all)
+    ;;
   *) echo "STATUS unknown JOB=$JOB"; exit 2 ;;
 esac
 
 if ! docker info >/dev/null 2>&1; then
     sudo setsid nohup dockerd >/tmp/dockerd.log 2>&1 </dev/null 9>&- &
-    for _ in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 1; done
+    for _ in $(seq 180); do docker info >/dev/null 2>&1 && break; sleep 1; done
 fi
 docker info >/dev/null 2>&1 || { echo "STATUS docker-failed"; exit 1; }
 
@@ -104,7 +117,7 @@ else
     state=restarted
 fi
 
-if [ "$JOB" != search ] && [ "$JOB" != hostile ]; then
+if [ "$JOB" != search ] && [ "$JOB" != hostile ] && [ "$JOB" != oneround ]; then
     echo "STATUS $state | $(grep -c '\] chr.*\[[0-9]*s\]' "$LOG" 2>/dev/null) runs done"
     exit 0
 fi
